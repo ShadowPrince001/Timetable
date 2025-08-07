@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Timetable & Attendance System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-tachometer-alt text-primary me-2"></i>
+            Admin Dashboard
+        </h1>
+        <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Students
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_students }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Total Faculty
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_faculty }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-chalkboard-teacher fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Total Courses
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_courses }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-book fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Total Classrooms
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_classrooms }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-building fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-bolt me-2"></i>Quick Actions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-users me-2"></i>Manage Users
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_courses') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-book me-2"></i>Manage Courses
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_classrooms') }}" class="btn btn-outline-info w-100">
+                            <i class="fas fa-building me-2"></i>Manage Classrooms
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_timetable') }}" class="btn btn-outline-warning w-100">
+                            <i class="fas fa-calendar me-2"></i>Manage Timetable
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-history me-2"></i>Recent Attendance Activity
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Course</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Marked By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for attendance in recent_attendance %}
+                            <tr>
+                                <td>{{ attendance.student.name }}</td>
+                                <td>{{ attendance.timetable.course.name }}</td>
+                                <td>
+                                    {% if attendance.status == 'present' %}
+                                        <span class="badge bg-success">Present</span>
+                                    {% elif attendance.status == 'absent' %}
+                                        <span class="badge bg-danger">Absent</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">Late</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ attendance.date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ attendance.marked_by_user.name }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-bell me-2"></i>Recent Notifications
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Low Attendance Alert</h6>
+                            <small class="text-muted">3 mins ago</small>
+                        </div>
+                        <p class="mb-1">Student John Doe has attendance below 75%</p>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Timetable Updated</h6>
+                            <small class="text-muted">1 hour ago</small>
+                        </div>
+                        <p class="mb-1">New schedule generated for Computer Science</p>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Classroom Maintenance</h6>
+                            <small class="text-muted">2 hours ago</small>
+                        </div>
+                        <p class="mb-1">Room 101 scheduled for maintenance</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

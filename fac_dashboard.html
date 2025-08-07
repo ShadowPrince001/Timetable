@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Faculty Dashboard - Timetable & Attendance System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-chalkboard-teacher text-success me-2"></i>
+            Faculty Dashboard
+        </h1>
+        <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
+    </div>
+</div>
+
+<!-- Today's Classes -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-calendar-day me-2"></i>Today's Classes
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if today_classes %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Course</th>
+                                <th>Classroom</th>
+                                <th>Students</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for class in today_classes %}
+                            <tr>
+                                <td>{{ class.time_slot.start_time }} - {{ class.time_slot.end_time }}</td>
+                                <td>{{ class.course.name }}</td>
+                                <td>{{ class.classroom.room_number }}</td>
+                                <td>{{ class.course.max_students }}</td>
+                                <td>
+                                    <a href="{{ url_for('take_attendance', timetable_id=class.id) }}" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-clipboard-check me-1"></i>Take Attendance
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No classes scheduled for today</h5>
+                    <p class="text-muted">Enjoy your day off!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- My Courses -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-book me-2"></i>My Courses
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Course Name</th>
+                                <th>Credits</th>
+                                <th>Department</th>
+                                <th>Max Students</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for course in courses %}
+                            <tr>
+                                <td>{{ course.code }}</td>
+                                <td>{{ course.name }}</td>
+                                <td>{{ course.credits }}</td>
+                                <td>{{ course.department }}</td>
+                                <td>{{ course.max_students }}</td>
+                                <td>
+                                    <a href="{{ url_for('course_details', course_id=course.id) }}" class="btn btn-info btn-sm">
+                                        <i class="fas fa-eye me-1"></i>View
+                                    </a>
+                                    <a href="{{ url_for('course_attendance', course_id=course.id) }}" class="btn btn-success btn-sm">
+                                        <i class="fas fa-chart-bar me-1"></i>Attendance
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row">
+    <div class="col-lg-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Total Courses
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ courses|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-book fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Today's Classes
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ today_classes|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-calendar-day fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Pending Attendance
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">3</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-clock fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Notifications -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-bell me-2"></i>Recent Notifications
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Attendance Reminder</h6>
+                            <small class="text-muted">5 mins ago</small>
+                        </div>
+                        <p class="mb-1">Don't forget to mark attendance for CS101 at 10:00 AM</p>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Low Attendance Alert</h6>
+                            <small class="text-muted">1 hour ago</small>
+                        </div>
+                        <p class="mb-1">Student Alice Johnson has missed 3 consecutive classes</p>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Schedule Update</h6>
+                            <small class="text-muted">2 hours ago</small>
+                        </div>
+                        <p class="mb-1">Your class CS201 has been moved to Room 205</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

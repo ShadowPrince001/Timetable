@@ -1,0 +1,395 @@
+// Main JavaScript for Timetable & Attendance System
+
+$(document).ready(function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Initialize popovers
+    var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+        return new bootstrap.Popover(popoverTriggerEl);
+    });
+
+    // Auto-hide alerts after 5 seconds
+    setTimeout(function() {
+        $('.alert').fadeOut('slow');
+    }, 5000);
+
+    // Search functionality
+    $('#searchInput').on('keyup', function() {
+        var value = $(this).val().toLowerCase();
+        $('table tbody tr').filter(function() {
+            $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
+        });
+    });
+
+    // Attendance marking functionality
+    $('.attendance-btn').on('click', function() {
+        var studentId = $(this).data('student-id');
+        var timetableId = $(this).data('timetable-id');
+        var status = $(this).data('status');
+        var date = $('#attendance-date').val();
+
+        markAttendance(studentId, timetableId, status, date);
+    });
+
+    // Bulk attendance marking
+    $('#bulk-attendance-form').on('submit', function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+        
+        $.ajax({
+            url: '/api/bulk-mark-attendance',
+            method: 'POST',
+            data: formData,
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Attendance marked successfully!', 'success');
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showAlert('Error marking attendance', 'danger');
+                }
+            },
+            error: function() {
+                showAlert('Error marking attendance', 'danger');
+            }
+        });
+    });
+
+    // Timetable generation
+    $('#generate-timetable').on('click', function() {
+        var loadingBtn = $(this);
+        var originalText = loadingBtn.text();
+        
+        loadingBtn.html('<span class="spinner-border spinner-border-sm me-2"></span>Generating...');
+        loadingBtn.prop('disabled', true);
+
+        $.ajax({
+            url: '/api/generate-timetable',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Timetable generated successfully!', 'success');
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showAlert('Error generating timetable: ' + response.message, 'danger');
+                }
+            },
+            error: function() {
+                showAlert('Error generating timetable', 'danger');
+            },
+            complete: function() {
+                loadingBtn.text(originalText);
+                loadingBtn.prop('disabled', false);
+            }
+        });
+    });
+
+    // Export functionality
+    $('.export-btn').on('click', function() {
+        var format = $(this).data('format');
+        var type = $(this).data('type');
+        
+        window.open('/api/export/' + type + '/' + format, '_blank');
+    });
+
+    // Real-time notifications
+    checkNotifications();
+    setInterval(checkNotifications, 30000); // Check every 30 seconds
+
+    // Auto-refresh attendance data
+    if ($('#attendance-table').length) {
+        setInterval(refreshAttendanceData, 60000); // Refresh every minute
+    }
+
+    // Date picker initialization
+    $('.date-picker').datepicker({
+        format: 'yyyy-mm-dd',
+        autoclose: true,
+        todayHighlight: true
+    });
+
+    // Time picker initialization
+    $('.time-picker').timepicker({
+        minuteStep: 15,
+        showMeridian: false,
+        defaultTime: false
+    });
+
+    // Form validation
+    $('.needs-validation').on('submit', function(e) {
+        if (!this.checkValidity()) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        $(this).addClass('was-validated');
+    });
+
+    // Modal events
+    $('.modal').on('shown.bs.modal', function() {
+        $(this).find('input:first').focus();
+    });
+
+    // Sidebar toggle for mobile
+    $('#sidebarToggle').on('click', function() {
+        $('body').toggleClass('sidebar-toggled');
+        $('.sidebar').toggleClass('toggled');
+    });
+
+    // Print functionality
+    $('.print-btn').on('click', function() {
+        window.print();
+    });
+
+    // Copy to clipboard
+    $('.copy-btn').on('click', function() {
+        var text = $(this).data('text');
+        navigator.clipboard.writeText(text).then(function() {
+            showAlert('Copied to clipboard!', 'success');
+        });
+    });
+});
+
+// Function to mark attendance
+function markAttendance(studentId, timetableId, status, date) {
+    $.ajax({
+        url: '/api/mark-attendance',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            student_id: studentId,
+            timetable_id: timetableId,
+            status: status,
+            date: date
+        }),
+        success: function(response) {
+            if (response.success) {
+                showAlert('Attendance marked successfully!', 'success');
+                updateAttendanceButton(studentId, status);
+            } else {
+                showAlert('Error marking attendance', 'danger');
+            }
+        },
+        error: function() {
+            showAlert('Error marking attendance', 'danger');
+        }
+    });
+}
+
+// Function to update attendance button
+function updateAttendanceButton(studentId, status) {
+    var btn = $('[data-student-id="' + studentId + '"]');
+    var statusClass = '';
+    var statusText = '';
+    
+    switch(status) {
+        case 'present':
+            statusClass = 'btn-success';
+            statusText = 'Present';
+            break;
+        case 'absent':
+            statusClass = 'btn-danger';
+            statusText = 'Absent';
+            break;
+        case 'late':
+            statusClass = 'btn-warning';
+            statusText = 'Late';
+            break;
+    }
+    
+    btn.removeClass('btn-primary btn-success btn-danger btn-warning')
+       .addClass(statusClass)
+       .text(statusText);
+}
+
+// Function to show alerts
+function showAlert(message, type) {
+    var alertHtml = '<div class="alert alert-' + type + ' alert-dismissible fade show" role="alert">' +
+                    message +
+                    '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>' +
+                    '</div>';
+    
+    $('.container').first().prepend(alertHtml);
+    
+    // Auto-hide after 5 seconds
+    setTimeout(function() {
+        $('.alert').fadeOut('slow');
+    }, 5000);
+}
+
+// Function to check notifications
+function checkNotifications() {
+    $.ajax({
+        url: '/api/notifications',
+        method: 'GET',
+        success: function(response) {
+            if (response.notifications && response.notifications.length > 0) {
+                updateNotificationBadge(response.notifications.length);
+                showNotificationToast(response.notifications[0]);
+            }
+        }
+    });
+}
+
+// Function to update notification badge
+function updateNotificationBadge(count) {
+    var badge = $('#notification-badge');
+    if (badge.length) {
+        badge.text(count);
+        badge.show();
+    } else {
+        $('.navbar-nav .dropdown-toggle').append('<span id="notification-badge" class="badge bg-danger ms-1">' + count + '</span>');
+    }
+}
+
+// Function to show notification toast
+function showNotificationToast(notification) {
+    var toastHtml = '<div class="toast" role="alert">' +
+                    '<div class="toast-header">' +
+                    '<strong class="me-auto">' + notification.title + '</strong>' +
+                    '<small>' + notification.created_at + '</small>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="toast"></button>' +
+                    '</div>' +
+                    '<div class="toast-body">' + notification.message + '</div>' +
+                    '</div>';
+    
+    $('#toast-container').append(toastHtml);
+    $('.toast').toast('show');
+}
+
+// Function to refresh attendance data
+function refreshAttendanceData() {
+    $.ajax({
+        url: '/api/attendance-data',
+        method: 'GET',
+        success: function(response) {
+            if (response.data) {
+                updateAttendanceTable(response.data);
+            }
+        }
+    });
+}
+
+// Function to update attendance table
+function updateAttendanceTable(data) {
+    // Update table with new data
+    // This would depend on your specific table structure
+    console.log('Attendance data updated:', data);
+}
+
+// Function to generate timetable
+function generateTimetable() {
+    var constraints = {
+        courses: $('#courses').val(),
+        teachers: $('#teachers').val(),
+        classrooms: $('#classrooms').val(),
+        timeSlots: $('#time-slots').val()
+    };
+    
+    $.ajax({
+        url: '/api/generate-timetable',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(constraints),
+        success: function(response) {
+            if (response.success) {
+                showAlert('Timetable generated successfully!', 'success');
+                displayTimetable(response.timetable);
+            } else {
+                showAlert('Error generating timetable: ' + response.message, 'danger');
+            }
+        },
+        error: function() {
+            showAlert('Error generating timetable', 'danger');
+        }
+    });
+}
+
+// Function to display timetable
+function displayTimetable(timetableData) {
+    var table = $('#timetable-table tbody');
+    table.empty();
+    
+    timetableData.forEach(function(slot) {
+        var row = '<tr>' +
+                  '<td>' + slot.day + '</td>' +
+                  '<td>' + slot.start_time + ' - ' + slot.end_time + '</td>' +
+                  '<td>' + slot.course + '</td>' +
+                  '<td>' + slot.teacher + '</td>' +
+                  '<td>' + slot.classroom + '</td>' +
+                  '<td><button class="btn btn-sm btn-outline-primary edit-slot" data-id="' + slot.id + '">Edit</button></td>' +
+                  '</tr>';
+        table.append(row);
+    });
+}
+
+// Function to export data
+function exportData(type, format) {
+    var params = new URLSearchParams();
+    params.append('type', type);
+    params.append('format', format);
+    
+    window.open('/api/export?' + params.toString(), '_blank');
+}
+
+// Function to validate form
+function validateForm(formId) {
+    var form = $('#' + formId);
+    var isValid = true;
+    
+    form.find('[required]').each(function() {
+        if (!$(this).val()) {
+            $(this).addClass('is-invalid');
+            isValid = false;
+        } else {
+            $(this).removeClass('is-invalid');
+        }
+    });
+    
+    return isValid;
+}
+
+// Function to clear form
+function clearForm(formId) {
+    $('#' + formId)[0].reset();
+    $('#' + formId + ' .is-invalid').removeClass('is-invalid');
+}
+
+// Function to confirm action
+function confirmAction(message, callback) {
+    if (confirm(message)) {
+        callback();
+    }
+}
+
+// Function to format date
+function formatDate(dateString) {
+    var date = new Date(dateString);
+    return date.toLocaleDateString();
+}
+
+// Function to format time
+function formatTime(timeString) {
+    return timeString.substring(0, 5);
+}
+
+// Function to calculate attendance percentage
+function calculateAttendancePercentage(present, total) {
+    if (total === 0) return 0;
+    return Math.round((present / total) * 100);
+}
+
+// Function to update progress circle
+function updateProgressCircle(percentage) {
+    $('.progress-circle').css('background', 
+        'conic-gradient(#28a745 0deg ' + (percentage * 3.6) + 'deg, #e9ecef ' + (percentage * 3.6) + 'deg 360deg)'
+    );
+    $('.percentage').text(percentage + '%');
+} 
