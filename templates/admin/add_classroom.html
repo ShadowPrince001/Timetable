@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Add Classroom - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-building text-primary me-2"></i>
+            Add New Classroom
+        </h1>
+        <p class="text-muted">Create a new classroom</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-building me-2"></i>Classroom Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="needs-validation" novalidate>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="room_number" class="form-label">Room Number *</label>
+                            <input type="text" class="form-control" id="room_number" name="room_number" required>
+                            <div class="invalid-feedback">
+                                Please provide a room number.
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="building" class="form-label">Building *</label>
+                            <select class="form-select" id="building" name="building" required>
+                                <option value="">Choose building...</option>
+                                <option value="Main Block">Main Block</option>
+                                <option value="Engineering Block">Engineering Block</option>
+                                <option value="Science Block">Science Block</option>
+                                <option value="Library Block">Library Block</option>
+                                <option value="Administrative Block">Administrative Block</option>
+                                <option value="Hostel Block">Hostel Block</option>
+                                <option value="Sports Complex">Sports Complex</option>
+                                <option value="Auditorium">Auditorium</option>
+                                <option value="Laboratory Block">Laboratory Block</option>
+                                <option value="Computer Center">Computer Center</option>
+                            </select>
+                            <div class="invalid-feedback">
+                                Please select a building.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="capacity" class="form-label">Capacity *</label>
+                            <input type="number" class="form-control" id="capacity" name="capacity" min="1" max="500" required>
+                            <div class="invalid-feedback">
+                                Please provide a valid capacity.
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="equipment" class="form-label">Equipment</label>
+                            <input type="text" class="form-control" id="equipment" name="equipment" placeholder="e.g., Projector, Whiteboard, AC">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin_classrooms') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Classrooms
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Add Classroom
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-info-circle me-2"></i>Classroom Guidelines
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6 class="text-primary">Room Number</h6>
+                    <p class="small text-muted">Use standard format like 101, A101, Lab-101, etc.</p>
+                </div>
+                <div class="mb-3">
+                    <h6 class="text-success">Capacity</h6>
+                    <p class="small text-muted">Consider the type of room: Lecture halls (50-200), Labs (20-40), Tutorial rooms (20-30).</p>
+                </div>
+                <div class="mb-3">
+                    <h6 class="text-info">Equipment</h6>
+                    <p class="small text-muted">List available equipment like projectors, computers, lab equipment, etc.</p>
+                </div>
+                <div class="mb-3">
+                    <h6 class="text-warning">Building</h6>
+                    <p class="small text-muted">Choose the appropriate building for the classroom location.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Form validation
+(function() {
+    'use strict';
+    window.addEventListener('load', function() {
+        var forms = document.getElementsByClassName('needs-validation');
+        var validation = Array.prototype.filter.call(forms, function(form) {
+            form.addEventListener('submit', function(event) {
+                if (form.checkValidity() === false) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    }, false);
+})();
+</script>
+{% endblock %}

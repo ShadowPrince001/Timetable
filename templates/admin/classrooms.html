@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Classrooms - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-building text-primary me-2"></i>
+            Manage Classrooms
+        </h1>
+        <p class="text-muted">Add, edit, and manage classroom information</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-building me-2"></i>All Classrooms
+                </h6>
+                <a href="{{ url_for('admin_add_classroom') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i>Add Classroom
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Room Number</th>
+                                <th>Building</th>
+                                <th>Capacity</th>
+                                <th>Equipment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for classroom in classrooms %}
+                            <tr>
+                                <td><strong>{{ classroom.room_number }}</strong></td>
+                                <td>{{ classroom.building }}</td>
+                                <td>{{ classroom.capacity }} students</td>
+                                <td>
+                                    {% if classroom.equipment %}
+                                        {{ classroom.equipment }}
+                                    {% else %}
+                                        <span class="text-muted">Basic</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Classrooms
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ classrooms|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-building fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Total Capacity
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ classrooms|sum(attribute='capacity') }} students
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Average Capacity
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% if classrooms %}
+                                {{ (classrooms|sum(attribute='capacity') / classrooms|length)|round|int }} students
+                            {% else %}
+                                0 students
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-chart-line fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Buildings
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ classrooms|map(attribute='building')|unique|list|length }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-map-marker-alt fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

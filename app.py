@@ -277,6 +277,157 @@ def get_timetable():
     
     return jsonify(timetable_data)
 
+# Admin Management Routes
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    users = User.query.all()
+    return render_template('admin/users.html', users=users)
+
+@app.route('/admin/courses')
+@login_required
+def admin_courses():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    courses = Course.query.all()
+    teachers = User.query.filter_by(role='faculty').all()
+    return render_template('admin/courses.html', courses=courses, teachers=teachers)
+
+@app.route('/admin/classrooms')
+@login_required
+def admin_classrooms():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    classrooms = Classroom.query.all()
+    return render_template('admin/classrooms.html', classrooms=classrooms)
+
+@app.route('/admin/timetable')
+@login_required
+def admin_timetable():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetables = Timetable.query.all()
+    courses = Course.query.all()
+    classrooms = Classroom.query.all()
+    teachers = User.query.filter_by(role='faculty').all()
+    time_slots = TimeSlot.query.all()
+    
+    return render_template('admin/timetable.html', 
+                         timetables=timetables,
+                         courses=courses,
+                         classrooms=classrooms,
+                         teachers=teachers,
+                         time_slots=time_slots)
+
+@app.route('/admin/add_user', methods=['GET', 'POST'])
+@login_required
+def admin_add_user():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        name = request.form['name']
+        role = request.form['role']
+        department = request.form['department']
+        
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists', 'error')
+            return redirect(url_for('admin_add_user'))
+        
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+            name=name,
+            role=role,
+            department=department
+        )
+        db.session.add(user)
+        db.session.commit()
+        flash('User added successfully', 'success')
+        return redirect(url_for('admin_users'))
+    
+    return render_template('admin/add_user.html')
+
+@app.route('/admin/add_course', methods=['GET', 'POST'])
+@login_required
+def admin_add_course():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        code = request.form['code']
+        name = request.form['name']
+        credits = int(request.form['credits'])
+        department = request.form['department']
+        teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
+        max_students = int(request.form['max_students'])
+        
+        if Course.query.filter_by(code=code).first():
+            flash('Course code already exists', 'error')
+            return redirect(url_for('admin_add_course'))
+        
+        course = Course(
+            code=code,
+            name=name,
+            credits=credits,
+            department=department,
+            teacher_id=teacher_id,
+            max_students=max_students
+        )
+        db.session.add(course)
+        db.session.commit()
+        flash('Course added successfully', 'success')
+        return redirect(url_for('admin_courses'))
+    
+    teachers = User.query.filter_by(role='faculty').all()
+    return render_template('admin/add_course.html', teachers=teachers)
+
+@app.route('/admin/add_classroom', methods=['GET', 'POST'])
+@login_required
+def admin_add_classroom():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        room_number = request.form['room_number']
+        capacity = int(request.form['capacity'])
+        building = request.form['building']
+        equipment = request.form['equipment']
+        
+        if Classroom.query.filter_by(room_number=room_number).first():
+            flash('Room number already exists', 'error')
+            return redirect(url_for('admin_add_classroom'))
+        
+        classroom = Classroom(
+            room_number=room_number,
+            capacity=capacity,
+            building=building,
+            equipment=equipment
+        )
+        db.session.add(classroom)
+        db.session.commit()
+        flash('Classroom added successfully', 'success')
+        return redirect(url_for('admin_classrooms'))
+    
+    return render_template('admin/add_classroom.html')
+
 # Initialize database
 def init_db():
     with app.app_context():
