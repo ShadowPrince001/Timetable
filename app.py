@@ -165,14 +165,35 @@ def admin_dashboard():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get statistics
-    total_students = User.query.filter_by(role='student').count()
-    total_faculty = User.query.filter_by(role='faculty').count()
-    total_courses = Course.query.count()
-    total_classrooms = Classroom.query.count()
-    
-    # Get recent attendance data
-    recent_attendance = Attendance.query.order_by(Attendance.marked_at.desc()).limit(10).all()
+    try:
+        # Get statistics
+        total_students = User.query.filter_by(role='student').count()
+        total_faculty = User.query.filter_by(role='faculty').count()
+        total_courses = Course.query.count()
+        total_classrooms = Classroom.query.count()
+        
+        # Get recent attendance data
+        recent_attendance = Attendance.query.order_by(Attendance.marked_at.desc()).limit(10).all()
+        
+        # Ensure all relationships are loaded
+        for record in recent_attendance:
+            if not hasattr(record, 'student') or not record.student:
+                record.student = User.query.get(record.student_id)
+            if not hasattr(record, 'marked_by_user') or not record.marked_by_user:
+                record.marked_by_user = User.query.get(record.marked_by)
+            if not hasattr(record, 'timetable') or not record.timetable:
+                record.timetable = Timetable.query.get(record.timetable_id)
+            if record.timetable:
+                if not hasattr(record.timetable, 'course') or not record.timetable.course:
+                    record.timetable.course = Course.query.get(record.timetable.course_id)
+                    
+    except Exception as e:
+        flash(f'Error loading dashboard data: {str(e)}', 'error')
+        total_students = 0
+        total_faculty = 0
+        total_courses = 0
+        total_classrooms = 0
+        recent_attendance = []
     
     return render_template('admin/dashboard.html', 
                          total_students=total_students,
@@ -188,16 +209,32 @@ def faculty_dashboard():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get faculty's courses and timetables
-    courses = Course.query.filter_by(teacher_id=current_user.id).all()
-    timetables = Timetable.query.filter_by(teacher_id=current_user.id).all()
-    
-    # Get today's classes
-    today = datetime.now().strftime('%A')
-    today_classes = Timetable.query.join(TimeSlot).filter(
-        Timetable.teacher_id == current_user.id,
-        TimeSlot.day == today
-    ).all()
+    try:
+        # Get faculty's courses and timetables
+        courses = Course.query.filter_by(teacher_id=current_user.id).all()
+        timetables = Timetable.query.filter_by(teacher_id=current_user.id).all()
+        
+        # Get today's classes
+        today = datetime.now().strftime('%A')
+        today_classes = Timetable.query.join(TimeSlot).filter(
+            Timetable.teacher_id == current_user.id,
+            TimeSlot.day == today
+        ).all()
+        
+        # Ensure all relationships are loaded for today's classes
+        for tt in today_classes:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+                
+    except Exception as e:
+        flash(f'Error loading dashboard data: {str(e)}', 'error')
+        courses = []
+        timetables = []
+        today_classes = []
     
     return render_template('faculty/dashboard.html', 
                          courses=courses,
@@ -211,20 +248,53 @@ def student_dashboard():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get student's attendance records
-    attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).limit(10).all()
-    
-    # Get attendance statistics
-    total_classes = Attendance.query.filter_by(student_id=current_user.id).count()
-    present_classes = Attendance.query.filter_by(student_id=current_user.id, status='present').count()
-    late_classes = Attendance.query.filter_by(student_id=current_user.id, status='late').count()
-    attendance_percentage = (present_classes / total_classes * 100) if total_classes > 0 else 0
-    
-    # Get today's classes (simplified - get sample timetable data)
-    today = datetime.now().strftime('%A')
-    today_classes = Timetable.query.join(TimeSlot).filter(
-        TimeSlot.day == today
-    ).limit(5).all()
+    try:
+        # Get student's attendance records
+        attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).limit(10).all()
+        
+        # Ensure all relationships are loaded
+        for record in attendance_records:
+            if not hasattr(record, 'timetable') or not record.timetable:
+                record.timetable = Timetable.query.get(record.timetable_id)
+            if record.timetable:
+                if not hasattr(record.timetable, 'course') or not record.timetable.course:
+                    record.timetable.course = Course.query.get(record.timetable.course_id)
+                if not hasattr(record.timetable, 'teacher') or not record.timetable.teacher:
+                    record.timetable.teacher = User.query.get(record.timetable.teacher_id)
+                if not hasattr(record.timetable, 'classroom') or not record.timetable.classroom:
+                    record.timetable.classroom = Classroom.query.get(record.timetable.classroom_id)
+        
+        # Get attendance statistics
+        total_classes = Attendance.query.filter_by(student_id=current_user.id).count()
+        present_classes = Attendance.query.filter_by(student_id=current_user.id, status='present').count()
+        late_classes = Attendance.query.filter_by(student_id=current_user.id, status='late').count()
+        attendance_percentage = (present_classes / total_classes * 100) if total_classes > 0 else 0
+        
+        # Get today's classes (simplified - get sample timetable data)
+        today = datetime.now().strftime('%A')
+        today_classes = Timetable.query.join(TimeSlot).filter(
+            TimeSlot.day == today
+        ).limit(5).all()
+        
+        # Ensure all relationships are loaded for today's classes
+        for tt in today_classes:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'teacher') or not tt.teacher:
+                tt.teacher = User.query.get(tt.teacher_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+                
+    except Exception as e:
+        flash(f'Error loading dashboard data: {str(e)}', 'error')
+        attendance_records = []
+        total_classes = 0
+        present_classes = 0
+        late_classes = 0
+        attendance_percentage = 0
+        today_classes = []
     
     return render_template('student/dashboard.html',
                          attendance_records=attendance_records,
@@ -678,15 +748,62 @@ def course_attendance(course_id):
         flash('You can only view attendance for your own courses', 'error')
         return redirect(url_for('faculty_dashboard'))
     
-    # Get attendance records for this course
-    attendance_records = db.session.query(Attendance).join(
-        Timetable, Attendance.timetable_id == Timetable.id
-    ).filter(
-        Timetable.course_id == course_id,
-        Timetable.teacher_id == current_user.id
-    ).order_by(Attendance.date.desc()).all()
+    try:
+        # Get attendance records for this course through timetables
+        attendance_records = db.session.query(Attendance).join(
+            Timetable, Attendance.timetable_id == Timetable.id
+        ).filter(
+            Timetable.course_id == course_id,
+            Timetable.teacher_id == current_user.id
+        ).order_by(Attendance.date.desc()).all()
+        
+        # Ensure all relationships are loaded
+        for record in attendance_records:
+            if not hasattr(record, 'student') or not record.student:
+                record.student = User.query.get(record.student_id)
+            if not hasattr(record, 'marked_by_user') or not record.marked_by_user:
+                record.marked_by_user = User.query.get(record.marked_by)
+                
+    except Exception as e:
+        flash(f'Error loading attendance data: {str(e)}', 'error')
+        attendance_records = []
     
     return render_template('faculty/course_attendance.html', course=course, attendance_records=attendance_records)
+
+@app.route('/faculty/all_attendance')
+@login_required
+def faculty_all_attendance():
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get all attendance records for courses taught by this faculty
+        attendance_records = db.session.query(Attendance).join(
+            Timetable, Attendance.timetable_id == Timetable.id
+        ).filter(
+            Timetable.teacher_id == current_user.id
+        ).order_by(Attendance.date.desc()).all()
+        
+        # Ensure all relationships are loaded
+        for record in attendance_records:
+            if not hasattr(record, 'student') or not record.student:
+                record.student = User.query.get(record.student_id)
+            if not hasattr(record, 'marked_by_user') or not record.marked_by_user:
+                record.marked_by_user = User.query.get(record.marked_by)
+            if not hasattr(record, 'timetable') or not record.timetable:
+                record.timetable = Timetable.query.get(record.timetable_id)
+            if record.timetable:
+                if not hasattr(record.timetable, 'course') or not record.timetable.course:
+                    record.timetable.course = Course.query.get(record.timetable.course_id)
+                if not hasattr(record.timetable, 'classroom') or not record.timetable.classroom:
+                    record.timetable.classroom = Classroom.query.get(record.timetable.classroom_id)
+                    
+    except Exception as e:
+        flash(f'Error loading attendance data: {str(e)}', 'error')
+        attendance_records = []
+    
+    return render_template('faculty/all_attendance.html', attendance_records=attendance_records)
 
 # Student Routes
 @app.route('/student/timetable')
@@ -696,18 +813,34 @@ def student_timetable():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get student's full timetable (simplified - showing all timetables for demo)
-    timetables = Timetable.query.join(TimeSlot).order_by(
-        db.case(
-            (TimeSlot.day == 'Monday', 1),
-            (TimeSlot.day == 'Tuesday', 2),
-            (TimeSlot.day == 'Wednesday', 3),
-            (TimeSlot.day == 'Thursday', 4),
-            (TimeSlot.day == 'Friday', 5),
-            else_=6
-        ),
-        TimeSlot.start_time
-    ).all()
+    try:
+        # Get student's full timetable (simplified - showing all timetables for demo)
+        timetables = Timetable.query.join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).order_by(
+            db.case(
+                (TimeSlot.day == 'Monday', 1),
+                (TimeSlot.day == 'Tuesday', 2),
+                (TimeSlot.day == 'Wednesday', 3),
+                (TimeSlot.day == 'Thursday', 4),
+                (TimeSlot.day == 'Friday', 5),
+                else_=6
+            ),
+            TimeSlot.start_time
+        ).all()
+        
+        # Ensure all relationships are loaded
+        for tt in timetables:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+            if not hasattr(tt, 'teacher') or not tt.teacher:
+                tt.teacher = User.query.get(tt.teacher_id)
+                
+    except Exception as e:
+        flash(f'Error loading timetable data: {str(e)}', 'error')
+        timetables = []
     
     return render_template('student/timetable.html', timetables=timetables)
 
@@ -718,29 +851,48 @@ def student_attendance_history():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get all attendance records for the student
-    attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
-    
-    # Get attendance statistics by course
-    course_stats = {}
-    for record in attendance_records:
-        course = record.timetable.course
-        if course.id not in course_stats:
-            course_stats[course.id] = {
-                'course': course,
-                'total': 0,
-                'present': 0,
-                'absent': 0,
-                'late': 0
-            }
+    try:
+        # Get all attendance records for the student
+        attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
         
-        course_stats[course.id]['total'] += 1
-        course_stats[course.id][record.status] += 1
-    
-    # Calculate percentages
-    for course_id in course_stats:
-        stats = course_stats[course_id]
-        stats['percentage'] = (stats['present'] / stats['total'] * 100) if stats['total'] > 0 else 0
+        # Ensure all relationships are loaded
+        for record in attendance_records:
+            if not hasattr(record, 'timetable') or not record.timetable:
+                record.timetable = Timetable.query.get(record.timetable_id)
+            if record.timetable:
+                if not hasattr(record.timetable, 'course') or not record.timetable.course:
+                    record.timetable.course = Course.query.get(record.timetable.course_id)
+                if not hasattr(record.timetable, 'teacher') or not record.timetable.teacher:
+                    record.timetable.teacher = User.query.get(record.timetable.teacher_id)
+                if not hasattr(record.timetable, 'classroom') or not record.timetable.classroom:
+                    record.timetable.classroom = Classroom.query.get(record.timetable.classroom_id)
+        
+        # Get attendance statistics by course
+        course_stats = {}
+        for record in attendance_records:
+            if record.timetable and record.timetable.course:
+                course = record.timetable.course
+                if course.id not in course_stats:
+                    course_stats[course.id] = {
+                        'course': course,
+                        'total': 0,
+                        'present': 0,
+                        'absent': 0,
+                        'late': 0
+                    }
+                
+                course_stats[course.id]['total'] += 1
+                course_stats[course.id][record.status] += 1
+        
+        # Calculate percentages
+        for course_id in course_stats:
+            stats = course_stats[course_id]
+            stats['percentage'] = (stats['present'] / stats['total'] * 100) if stats['total'] > 0 else 0
+            
+    except Exception as e:
+        flash(f'Error loading attendance data: {str(e)}', 'error')
+        attendance_records = []
+        course_stats = {}
     
     return render_template('student/attendance_history.html', 
                          attendance_records=attendance_records,
@@ -754,6 +906,88 @@ def student_profile():
         return redirect(url_for('dashboard'))
     
     return render_template('student/profile.html', user=current_user)
+
+@app.route('/student/attendance_alerts')
+@login_required
+def student_attendance_alerts():
+    if current_user.role != 'student':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get attendance records for the student
+        attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
+        
+        # Ensure all relationships are loaded
+        for record in attendance_records:
+            if not hasattr(record, 'timetable') or not record.timetable:
+                record.timetable = Timetable.query.get(record.timetable_id)
+            if record.timetable:
+                if not hasattr(record.timetable, 'course') or not record.timetable.course:
+                    record.timetable.course = Course.query.get(record.timetable.course_id)
+        
+        # Calculate attendance statistics by course
+        course_stats = {}
+        for record in attendance_records:
+            if record.timetable and record.timetable.course:
+                course = record.timetable.course
+                if course.id not in course_stats:
+                    course_stats[course.id] = {
+                        'course': course,
+                        'total': 0,
+                        'present': 0,
+                        'absent': 0,
+                        'late': 0
+                    }
+                
+                course_stats[course.id]['total'] += 1
+                course_stats[course.id][record.status] += 1
+        
+        # Calculate percentages and identify alerts
+        alerts = []
+        for course_id in course_stats:
+            stats = course_stats[course_id]
+            stats['percentage'] = (stats['present'] / stats['total'] * 100) if stats['total'] > 0 else 0
+            
+            # Generate alerts based on attendance
+            if stats['percentage'] < 75:
+                alerts.append({
+                    'type': 'warning',
+                    'title': f'Low Attendance in {stats["course"].code}',
+                    'message': f'Your attendance in {stats["course"].name} is {stats["percentage"]:.1f}%, which is below the required 75%.',
+                    'course': stats['course']
+                })
+            elif stats['percentage'] < 60:
+                alerts.append({
+                    'type': 'danger',
+                    'title': f'Critical Attendance in {stats["course"].code}',
+                    'message': f'Your attendance in {stats["course"].name} is {stats["percentage"]:.1f}%, which is critically low.',
+                    'course': stats['course']
+                })
+        
+        # Check for consecutive absences
+        recent_records = attendance_records[:10]  # Last 10 records
+        consecutive_absences = 0
+        for record in recent_records:
+            if record.status == 'absent':
+                consecutive_absences += 1
+            else:
+                break
+        
+        if consecutive_absences >= 3:
+            alerts.append({
+                'type': 'danger',
+                'title': 'Consecutive Absences',
+                'message': f'You have missed {consecutive_absences} consecutive classes. Please contact your faculty.',
+                'course': None
+            })
+            
+    except Exception as e:
+        flash(f'Error loading attendance alerts: {str(e)}', 'error')
+        alerts = []
+        course_stats = {}
+    
+    return render_template('student/attendance_alerts.html', alerts=alerts, course_stats=course_stats)
 
 # Timetable Management Routes
 @app.route('/admin/add_timetable_entry', methods=['POST'])
@@ -924,6 +1158,62 @@ def admin_bulk_delete_users():
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/admin/add_sample_attendance')
+@login_required
+def admin_add_sample_attendance():
+    """Add sample attendance records for testing"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get sample data
+        students = User.query.filter_by(role='student').limit(2).all()
+        timetables = Timetable.query.limit(2).all()
+        
+        if not students or not timetables:
+            flash('Need students and timetables to create sample attendance', 'error')
+            return redirect(url_for('admin_dashboard'))
+        
+        # Create sample attendance records
+        sample_dates = [
+            datetime.now().date() - timedelta(days=i) for i in range(7)
+        ]
+        
+        attendance_count = 0
+        for timetable in timetables:
+            for student in students:
+                for date in sample_dates:
+                    # Check if attendance already exists
+                    existing = Attendance.query.filter_by(
+                        student_id=student.id,
+                        timetable_id=timetable.id,
+                        date=date
+                    ).first()
+                    
+                    if not existing:
+                        # Randomly assign attendance status
+                        import random
+                        status = random.choice(['present', 'absent', 'late'])
+                        
+                        new_attendance = Attendance(
+                            student_id=student.id,
+                            timetable_id=timetable.id,
+                            date=date,
+                            status=status,
+                            marked_by=current_user.id
+                        )
+                        db.session.add(new_attendance)
+                        attendance_count += 1
+        
+        db.session.commit()
+        flash(f'Added {attendance_count} sample attendance records', 'success')
+        
+    except Exception as e:
+        flash(f'Error creating sample attendance: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
 # Initialize database
 def init_db():
     with app.app_context():
@@ -940,6 +1230,142 @@ def init_db():
                 name='System Administrator'
             )
             db.session.add(admin)
+            db.session.commit()
+        
+        # Add sample data if database is empty
+        if not User.query.filter_by(role='faculty').first():
+            # Create sample faculty
+            faculty1 = User(
+                username='faculty1',
+                email='faculty1@institution.com',
+                password_hash=generate_password_hash('faculty123'),
+                role='faculty',
+                name='Dr. John Smith',
+                department='Computer Science'
+            )
+            faculty2 = User(
+                username='faculty2',
+                email='faculty2@institution.com',
+                password_hash=generate_password_hash('faculty123'),
+                role='faculty',
+                name='Prof. Jane Doe',
+                department='Mathematics'
+            )
+            db.session.add_all([faculty1, faculty2])
+            db.session.commit()
+        
+        if not User.query.filter_by(role='student').first():
+            # Create sample students
+            student1 = User(
+                username='student1',
+                email='student1@institution.com',
+                password_hash=generate_password_hash('student123'),
+                role='student',
+                name='Alice Johnson',
+                department='Computer Science'
+            )
+            student2 = User(
+                username='student2',
+                email='student2@institution.com',
+                password_hash=generate_password_hash('student123'),
+                role='student',
+                name='Bob Wilson',
+                department='Computer Science'
+            )
+            db.session.add_all([student1, student2])
+            db.session.commit()
+        
+        if not Course.query.first():
+            # Create sample courses
+            faculty1 = User.query.filter_by(username='faculty1').first()
+            faculty2 = User.query.filter_by(username='faculty2').first()
+            
+            course1 = Course(
+                code='CS101',
+                name='Introduction to Computer Science',
+                credits=3,
+                department='Computer Science',
+                teacher_id=faculty1.id if faculty1 else None,
+                max_students=50
+            )
+            course2 = Course(
+                code='MATH101',
+                name='Calculus I',
+                credits=4,
+                department='Mathematics',
+                teacher_id=faculty2.id if faculty2 else None,
+                max_students=40
+            )
+            db.session.add_all([course1, course2])
+            db.session.commit()
+        
+        if not Classroom.query.first():
+            # Create sample classrooms
+            classroom1 = Classroom(
+                room_number='101',
+                capacity=50,
+                building='Science Building',
+                equipment='Projector, Whiteboard'
+            )
+            classroom2 = Classroom(
+                room_number='205',
+                capacity=40,
+                building='Mathematics Building',
+                equipment='Smart Board, Computer'
+            )
+            db.session.add_all([classroom1, classroom2])
+            db.session.commit()
+        
+        if not TimeSlot.query.first():
+            # Create sample time slots
+            time_slots = [
+                TimeSlot(day='Monday', start_time='09:00', end_time='10:00'),
+                TimeSlot(day='Monday', start_time='10:00', end_time='11:00'),
+                TimeSlot(day='Tuesday', start_time='09:00', end_time='10:00'),
+                TimeSlot(day='Tuesday', start_time='10:00', end_time='11:00'),
+                TimeSlot(day='Wednesday', start_time='09:00', end_time='10:00'),
+                TimeSlot(day='Wednesday', start_time='10:00', end_time='11:00'),
+                TimeSlot(day='Thursday', start_time='09:00', end_time='10:00'),
+                TimeSlot(day='Thursday', start_time='10:00', end_time='11:00'),
+                TimeSlot(day='Friday', start_time='09:00', end_time='10:00'),
+                TimeSlot(day='Friday', start_time='10:00', end_time='11:00'),
+            ]
+            db.session.add_all(time_slots)
+            db.session.commit()
+        
+        if not Timetable.query.first():
+            # Create sample timetable entries
+            course1 = Course.query.filter_by(code='CS101').first()
+            course2 = Course.query.filter_by(code='MATH101').first()
+            faculty1 = User.query.filter_by(username='faculty1').first()
+            faculty2 = User.query.filter_by(username='faculty2').first()
+            classroom1 = Classroom.query.filter_by(room_number='101').first()
+            classroom2 = Classroom.query.filter_by(room_number='205').first()
+            time_slot1 = TimeSlot.query.filter_by(day='Monday', start_time='09:00').first()
+            time_slot2 = TimeSlot.query.filter_by(day='Tuesday', start_time='09:00').first()
+            
+            if all([course1, faculty1, classroom1, time_slot1]):
+                timetable1 = Timetable(
+                    course_id=course1.id,
+                    teacher_id=faculty1.id,
+                    classroom_id=classroom1.id,
+                    time_slot_id=time_slot1.id,
+                    semester='Fall 2024',
+                    academic_year='2024-2025'
+                )
+                db.session.add(timetable1)
+            
+            if all([course2, faculty2, classroom2, time_slot2]):
+                timetable2 = Timetable(
+                    course_id=course2.id,
+                    teacher_id=faculty2.id,
+                    classroom_id=classroom2.id,
+                    time_slot_id=time_slot2.id,
+                    semester='Fall 2024',
+                    academic_year='2024-2025'
+                )
+                db.session.add(timetable2)
+            
             db.session.commit()
 
 if __name__ == '__main__':
