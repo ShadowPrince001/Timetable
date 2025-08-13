@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance History - Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-history text-info me-2"></i>
+            Attendance History
+        </h1>
+        <p class="text-muted">Your complete attendance records and statistics</p>
+    </div>
+</div>
+
+<!-- Course-wise Statistics -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-chart-bar me-2"></i>Course-wise Attendance Statistics
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if course_stats %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Course Name</th>
+                                <th>Total Classes</th>
+                                <th>Present</th>
+                                <th>Absent</th>
+                                <th>Late</th>
+                                <th>Attendance %</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for course_id, stats in course_stats.items() %}
+                            <tr>
+                                <td><code>{{ stats.course.code }}</code></td>
+                                <td>{{ stats.course.name }}</td>
+                                <td>{{ stats.total }}</td>
+                                <td><span class="badge bg-success">{{ stats.present }}</span></td>
+                                <td><span class="badge bg-danger">{{ stats.absent }}</span></td>
+                                <td><span class="badge bg-warning">{{ stats.late }}</span></td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar 
+                                            {% if stats.percentage >= 75 %}bg-success
+                                            {% elif stats.percentage >= 60 %}bg-warning
+                                            {% else %}bg-danger{% endif %}" 
+                                            role="progressbar" 
+                                            style="width: {{ stats.percentage }}%">
+                                            {{ "%.1f"|format(stats.percentage) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if stats.percentage >= 75 %}
+                                        <span class="badge bg-success">Good</span>
+                                    {% elif stats.percentage >= 60 %}
+                                        <span class="badge bg-warning">Warning</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Critical</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No Statistics Available</h5>
+                    <p class="text-muted">Attendance statistics will appear here once you have some attendance records.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Attendance Records -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-list me-2"></i>Detailed Attendance Records
+                </h6>
+                <div>
+                    <button class="btn btn-sm btn-outline-info" onclick="filterRecords('all')">All</button>
+                    <button class="btn btn-sm btn-outline-success" onclick="filterRecords('present')">Present</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="filterRecords('absent')">Absent</button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="filterRecords('late')">Late</button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if attendance_records %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" width="100%" cellspacing="0" id="attendanceTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Course</th>
+                                <th>Faculty</th>
+                                <th>Status</th>
+                                <th>Time Marked</th>
+                                <th>Classroom</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in attendance_records %}
+                            <tr data-status="{{ record.status }}">
+                                <td>{{ record.date.strftime('%Y-%m-%d') }}</td>
+                                <td>
+                                    <strong>{{ record.timetable.course.code }}</strong><br>
+                                    <small class="text-muted">{{ record.timetable.course.name }}</small>
+                                </td>
+                                <td>{{ record.timetable.teacher.name }}</td>
+                                <td>
+                                    {% if record.status == 'present' %}
+                                        <span class="badge bg-success">Present</span>
+                                    {% elif record.status == 'absent' %}
+                                        <span class="badge bg-danger">Absent</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">Late</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ record.marked_at.strftime('%H:%M:%S') }}</td>
+                                <td>{{ record.timetable.classroom.room_number }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Summary -->
+                <div class="row mt-4">
+                    <div class="col-md-3">
+                        <div class="card border-left-success">
+                            <div class="card-body py-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    Total Present
+                                </div>
+                                <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                    {{ attendance_records|selectattr('status', 'equalto', 'present')|list|length }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-left-danger">
+                            <div class="card-body py-2">
+                                <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                    Total Absent
+                                </div>
+                                <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                    {{ attendance_records|selectattr('status', 'equalto', 'absent')|list|length }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-left-warning">
+                            <div class="card-body py-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Total Late
+                                </div>
+                                <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                    {{ attendance_records|selectattr('status', 'equalto', 'late')|list|length }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-left-info">
+                            <div class="card-body py-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                    Overall %
+                                </div>
+                                <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                    {% set total = attendance_records|length %}
+                                    {% set present = attendance_records|selectattr('status', 'equalto', 'present')|list|length %}
+                                    {% if total > 0 %}
+                                        {{ "%.1f"|format((present / total) * 100) }}%
+                                    {% else %}
+                                        0%
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-clipboard fa-4x text-muted mb-4"></i>
+                    <h4 class="text-muted">No Attendance Records</h4>
+                    <p class="text-muted">Your attendance records will appear here once faculty starts taking attendance.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <button class="btn btn-outline-info" onclick="exportAttendance()">
+                    <i class="fas fa-download me-1"></i>Export CSV
+                </button>
+                <button class="btn btn-outline-primary" onclick="printAttendance()">
+                    <i class="fas fa-print me-1"></i>Print Report
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterRecords(status) {
+    const rows = document.querySelectorAll('#attendanceTable tbody tr');
+    
+    rows.forEach(row => {
+        if (status === 'all' || row.dataset.status === status) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update button states
+    document.querySelectorAll('.btn-outline-info, .btn-outline-success, .btn-outline-danger, .btn-outline-warning').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
+function exportAttendance() {
+    const table = document.getElementById('attendanceTable');
+    const rows = table.querySelectorAll('tr:not([style*="display: none"])');
+    let csv = [];
+    
+    for (let i = 0; i < rows.length; i++) {
+        const row = [], cols = rows[i].querySelectorAll('td, th');
+        
+        for (let j = 0; j < cols.length; j++) {
+            let cellText = cols[j].innerText || cols[j].textContent || '';
+            cellText = cellText.replace(/"/g, '""');
+            row.push('"' + cellText + '"');
+        }
+        
+        csv.push(row.join(','));
+    }
+    
+    const csvContent = csv.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'my_attendance_history.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+function printAttendance() {
+    window.print();
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Time Slot - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-edit text-primary me-2"></i>
+            Edit Time Slot
+        </h1>
+        <p class="text-muted">Update time slot information</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-clock me-2"></i>Time Slot Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="day" class="form-label">Day</label>
+                                <select class="form-control" id="day" name="day" required>
+                                    <option value="Monday" {% if time_slot.day == 'Monday' %}selected{% endif %}>Monday</option>
+                                    <option value="Tuesday" {% if time_slot.day == 'Tuesday' %}selected{% endif %}>Tuesday</option>
+                                    <option value="Wednesday" {% if time_slot.day == 'Wednesday' %}selected{% endif %}>Wednesday</option>
+                                    <option value="Thursday" {% if time_slot.day == 'Thursday' %}selected{% endif %}>Thursday</option>
+                                    <option value="Friday" {% if time_slot.day == 'Friday' %}selected{% endif %}>Friday</option>
+                                    <option value="Saturday" {% if time_slot.day == 'Saturday' %}selected{% endif %}>Saturday</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="start_time" class="form-label">Start Time</label>
+                                <input type="time" class="form-control" id="start_time" name="start_time" value="{{ time_slot.start_time }}" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="end_time" class="form-label">End Time</label>
+                                <input type="time" class="form-control" id="end_time" name="end_time" value="{{ time_slot.end_time }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="break_type" class="form-label">Break Type</label>
+                                <select class="form-control" id="break_type" name="break_type">
+                                    <option value="none" {% if time_slot.break_type == 'none' %}selected{% endif %}>No Break</option>
+                                    <option value="short" {% if time_slot.break_type == 'short' %}selected{% endif %}>Short Break (5-10 min)</option>
+                                    <option value="medium" {% if time_slot.break_type == 'medium' %}selected{% endif %}>Medium Break (15-20 min)</option>
+                                    <option value="long" {% if time_slot.break_type == 'long' %}selected{% endif %}>Long Break (30+ min)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="notes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Any special notes about this time slot">{{ time_slot.notes or '' }}</textarea>
+                    </div>
+                    
+                    <div class="form-group d-flex justify-content-between">
+                        <a href="{{ url_for('admin_time_slots') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Update Time Slot
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-info-circle me-2"></i>Current Details
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Day:</strong><br>
+                    <span class="badge bg-primary">{{ time_slot.day }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Start Time:</strong><br>
+                    <span class="text-muted">{{ time_slot.start_time }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>End Time:</strong><br>
+                    <span class="text-muted">{{ time_slot.end_time }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Duration:</strong><br>
+                    {% set start = time_slot.start_time.split(':') %}
+                    {% set end = time_slot.end_time.split(':') %}
+                    {% set duration = (end[0]|int - start[0]|int) * 60 + (end[1]|int - start[1]|int) %}
+                    <span class="text-muted">{{ duration }} minutes</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Break Type:</strong><br>
+                    <span class="badge bg-info">{{ time_slot.break_type|title if time_slot.break_type else 'None' }}</span>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> Changing time slots may affect existing timetables and class schedules.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

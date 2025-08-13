@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Timetable - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-calendar-alt text-primary me-2"></i>
+            Manage Timetable
+        </h1>
+        <p class="text-muted">Create and manage class schedules</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-table me-2"></i>Current Timetable
+                </h6>
+                <div>
+                    <button class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#addTimeSlotModal">
+                        <i class="fas fa-clock me-1"></i>Add Time Slot
+                    </button>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTimetableModal">
+                        <i class="fas fa-plus me-1"></i>Add Timetable Entry
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if timetables %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Time</th>
+                                <th>Course</th>
+                                <th>Teacher</th>
+                                <th>Classroom</th>
+                                <th>Semester</th>
+                                <th>Academic Year</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for timetable in timetables %}
+                            <tr>
+                                <td><strong>{{ timetable.time_slot.day }}</strong></td>
+                                <td>{{ timetable.time_slot.start_time }} - {{ timetable.time_slot.end_time }}</td>
+                                <td>
+                                    <strong>{{ timetable.course.code }}</strong><br>
+                                    <small class="text-muted">{{ timetable.course.name }}</small>
+                                </td>
+                                <td>{{ timetable.teacher.name }}</td>
+                                <td>
+                                    {{ timetable.classroom.room_number }}<br>
+                                    <small class="text-muted">{{ timetable.classroom.building }}</small>
+                                </td>
+                                <td>{{ timetable.semester }}</td>
+                                <td>{{ timetable.academic_year }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editTimetable({{ timetable.id }})">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('admin_delete_timetable', timetable_id=timetable.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this timetable entry?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No timetable entries found</h5>
+                    <p class="text-muted">Start creating your timetable by adding entries.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Weekly View -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-calendar-week me-2"></i>Weekly Grid View
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="bg-primary text-white">
+                            <tr>
+                                <th>Time</th>
+                                <th>Monday</th>
+                                <th>Tuesday</th>
+                                <th>Wednesday</th>
+                                <th>Thursday</th>
+                                <th>Friday</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set time_slots = ['09:00-10:00', '10:00-11:00', '11:15-12:15', '12:15-13:15', '14:00-15:00', '15:00-16:00'] %}
+                            {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                            
+                            {% for time in time_slots %}
+                            <tr>
+                                <td class="bg-light"><strong>{{ time }}</strong></td>
+                                {% for day in days %}
+                                <td>
+                                    {% for timetable in timetables %}
+                                        {% if timetable.time_slot.day == day and (timetable.time_slot.start_time + '-' + timetable.time_slot.end_time) == time %}
+                                            <div class="text-center p-2 bg-info text-white rounded">
+                                                <small><strong>{{ timetable.course.code }}</strong></small><br>
+                                                <small>{{ timetable.classroom.room_number }}</small>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Timetable Entry Modal -->
+<div class="modal fade" id="addTimetableModal" tabindex="-1" aria-labelledby="addTimetableModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTimetableModalLabel">
+                    <i class="fas fa-plus me-2"></i>Add Timetable Entry
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_add_timetable_entry') }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="course_id" class="form-label">Course</label>
+                                <select class="form-control" id="course_id" name="course_id" required>
+                                    <option value="">Select a course</option>
+                                    {% for course in courses %}
+                                    <option value="{{ course.id }}">{{ course.code }} - {{ course.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="teacher_id" class="form-label">Teacher</label>
+                                <select class="form-control" id="teacher_id" name="teacher_id" required>
+                                    <option value="">Select a teacher</option>
+                                    {% for teacher in teachers %}
+                                    <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="classroom_id" class="form-label">Classroom</label>
+                                <select class="form-control" id="classroom_id" name="classroom_id" required>
+                                    <option value="">Select a classroom</option>
+                                    {% for classroom in classrooms %}
+                                    <option value="{{ classroom.id }}">{{ classroom.room_number }} ({{ classroom.building }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="time_slot_id" class="form-label">Time Slot</label>
+                                <select class="form-control" id="time_slot_id" name="time_slot_id" required>
+                                    <option value="">Select a time slot</option>
+                                    {% for slot in time_slots %}
+                                    <option value="{{ slot.id }}">{{ slot.day }} {{ slot.start_time }}-{{ slot.end_time }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="semester" class="form-label">Semester</label>
+                                <select class="form-control" id="semester" name="semester" required>
+                                    <option value="">Select semester</option>
+                                    <option value="1">Semester 1</option>
+                                    <option value="2">Semester 2</option>
+                                    <option value="3">Semester 3</option>
+                                    <option value="4">Semester 4</option>
+                                    <option value="5">Semester 5</option>
+                                    <option value="6">Semester 6</option>
+                                    <option value="7">Semester 7</option>
+                                    <option value="8">Semester 8</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="academic_year" class="form-label">Academic Year</label>
+                                <input type="text" class="form-control" id="academic_year" name="academic_year" value="2024-25" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Add Entry
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Time Slot Modal -->
+<div class="modal fade" id="addTimeSlotModal" tabindex="-1" aria-labelledby="addTimeSlotModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTimeSlotModalLabel">
+                    <i class="fas fa-clock me-2"></i>Add Time Slot
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_add_time_slot') }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="day" class="form-label">Day</label>
+                                <select class="form-control" id="day" name="day" required>
+                                    <option value="">Select day</option>
+                                    <option value="Monday">Monday</option>
+                                    <option value="Tuesday">Tuesday</option>
+                                    <option value="Wednesday">Wednesday</option>
+                                    <option value="Thursday">Thursday</option>
+                                    <option value="Friday">Friday</option>
+                                    <option value="Saturday">Saturday</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="start_time" class="form-label">Start Time</label>
+                                <input type="time" class="form-control" id="start_time" name="start_time" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="end_time" class="form-label">End Time</label>
+                        <input type="time" class="form-control" id="end_time" name="end_time" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Add Time Slot
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editTimetable(id) {
+    // Redirect to edit page (to be implemented)
+    window.location.href = `/admin/edit_timetable/${id}`;
+}
+</script>
+{% endblock %}
+

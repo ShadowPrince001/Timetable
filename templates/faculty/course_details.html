@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Course Details - Faculty Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-book-open text-success me-2"></i>
+            Course Details
+        </h1>
+        <p class="text-muted">{{ course.code }} - {{ course.name }}</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-info-circle me-2"></i>Course Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <strong>Course Code:</strong> <code>{{ course.code }}</code>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Course Name:</strong> {{ course.name }}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Department:</strong> {{ course.department }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <strong>Credits:</strong> {{ course.credits }}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Max Students:</strong> {{ course.max_students }}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Instructor:</strong> {{ current_user.name }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-chart-bar me-2"></i>Quick Stats
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Total Classes:</span>
+                        <strong>{{ timetables|length }}</strong>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Classes This Week:</span>
+                        <strong>{{ timetables|length }}</strong>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Average Attendance:</span>
+                        <strong>85%</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-calendar me-2"></i>Class Schedule
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if timetables %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Time</th>
+                                <th>Classroom</th>
+                                <th>Building</th>
+                                <th>Semester</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for timetable in timetables %}
+                            <tr>
+                                <td><strong>{{ timetable.time_slot.day }}</strong></td>
+                                <td>{{ timetable.time_slot.start_time }} - {{ timetable.time_slot.end_time }}</td>
+                                <td>{{ timetable.classroom.room_number }}</td>
+                                <td>{{ timetable.classroom.building }}</td>
+                                <td>{{ timetable.semester }}</td>
+                                <td>
+                                    <a href="{{ url_for('take_attendance', timetable_id=timetable.id) }}" class="btn btn-sm btn-success">
+                                        <i class="fas fa-clipboard-check me-1"></i>Take Attendance
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No schedule found</h5>
+                    <p class="text-muted">This course is not yet scheduled in the timetable.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <a href="{{ url_for('course_attendance', course_id=course.id) }}" class="btn btn-info">
+                <i class="fas fa-chart-bar me-1"></i>View Attendance Reports
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

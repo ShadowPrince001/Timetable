@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Timetable Entry - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-edit text-primary me-2"></i>
+            Edit Timetable Entry
+        </h1>
+        <p class="text-muted">Update timetable information</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-calendar me-2"></i>Timetable Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="course_id" class="form-label">Course</label>
+                                <select class="form-control" id="course_id" name="course_id" required>
+                                    <option value="">Select a course</option>
+                                    {% for course in courses %}
+                                    <option value="{{ course.id }}" {% if course.id == timetable.course_id %}selected{% endif %}>
+                                        {{ course.code }} - {{ course.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="teacher_id" class="form-label">Teacher</label>
+                                <select class="form-control" id="teacher_id" name="teacher_id" required>
+                                    <option value="">Select a teacher</option>
+                                    {% for teacher in teachers %}
+                                    <option value="{{ teacher.id }}" {% if teacher.id == timetable.teacher_id %}selected{% endif %}>
+                                        {{ teacher.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="classroom_id" class="form-label">Classroom</label>
+                                <select class="form-control" id="classroom_id" name="classroom_id" required>
+                                    <option value="">Select a classroom</option>
+                                    {% for classroom in classrooms %}
+                                    <option value="{{ classroom.id }}" {% if classroom.id == timetable.classroom_id %}selected{% endif %}>
+                                        {{ classroom.room_number }} ({{ classroom.building }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="time_slot_id" class="form-label">Time Slot</label>
+                                <select class="form-control" id="time_slot_id" name="time_slot_id" required>
+                                    <option value="">Select a time slot</option>
+                                    {% for slot in time_slots %}
+                                    <option value="{{ slot.id }}" {% if slot.id == timetable.time_slot_id %}selected{% endif %}>
+                                        {{ slot.day }} {{ slot.start_time }}-{{ slot.end_time }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="semester" class="form-label">Semester</label>
+                                <select class="form-control" id="semester" name="semester" required>
+                                    <option value="">Select semester</option>
+                                    <option value="1" {% if timetable.semester == '1' %}selected{% endif %}>Semester 1</option>
+                                    <option value="2" {% if timetable.semester == '2' %}selected{% endif %}>Semester 2</option>
+                                    <option value="3" {% if timetable.semester == '3' %}selected{% endif %}>Semester 3</option>
+                                    <option value="4" {% if timetable.semester == '4' %}selected{% endif %}>Semester 4</option>
+                                    <option value="5" {% if timetable.semester == '5' %}selected{% endif %}>Semester 5</option>
+                                    <option value="6" {% if timetable.semester == '6' %}selected{% endif %}>Semester 6</option>
+                                    <option value="7" {% if timetable.semester == '7' %}selected{% endif %}>Semester 7</option>
+                                    <option value="8" {% if timetable.semester == '8' %}selected{% endif %}>Semester 8</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="academic_year" class="form-label">Academic Year</label>
+                                <input type="text" class="form-control" id="academic_year" name="academic_year" value="{{ timetable.academic_year }}" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group d-flex justify-content-between">
+                        <a href="{{ url_for('admin_timetable') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Update Timetable
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-info-circle me-2"></i>Current Details
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Course:</strong><br>
+                    <span class="text-muted">{{ timetable.course.code }} - {{ timetable.course.name }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Teacher:</strong><br>
+                    <span class="text-muted">{{ timetable.teacher.name }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Classroom:</strong><br>
+                    <span class="text-muted">{{ timetable.classroom.room_number }} ({{ timetable.classroom.building }})</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Time:</strong><br>
+                    <span class="text-muted">{{ timetable.time_slot.day }} {{ timetable.time_slot.start_time }}-{{ timetable.time_slot.end_time }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Semester:</strong> {{ timetable.semester }}
+                </div>
+                <div class="mb-3">
+                    <strong>Academic Year:</strong> {{ timetable.academic_year }}
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> Changing the timetable may affect existing attendance records and student schedules.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Take Attendance - Faculty Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-clipboard-check text-success me-2"></i>
+            Take Attendance
+        </h1>
+        <p class="text-muted">{{ timetable.course.name }} - {{ timetable.classroom.room_number }} - {{ today.strftime('%B %d, %Y') }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-users me-2"></i>Student Attendance - {{ timetable.time_slot.start_time }} to {{ timetable.time_slot.end_time }}
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('save_attendance') }}">
+                    <input type="hidden" name="timetable_id" value="{{ timetable.id }}">
+                    <input type="hidden" name="date" value="{{ today.strftime('%Y-%m-%d') }}">
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card border-left-info">
+                                <div class="card-body py-2">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                                Course
+                                            </div>
+                                            <div class="h6 mb-0 font-weight-bold text-gray-800">{{ timetable.course.code }} - {{ timetable.course.name }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-left-success">
+                                <div class="card-body py-2">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                                Total Students
+                                            </div>
+                                            <div class="h6 mb-0 font-weight-bold text-gray-800">{{ students|length }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-bordered" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Student ID</th>
+                                    <th>Student Name</th>
+                                    <th>Department</th>
+                                    <th class="text-center">Present</th>
+                                    <th class="text-center">Absent</th>
+                                    <th class="text-center">Late</th>
+                                    <th>Current Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for student in students %}
+                                <tr>
+                                    <td>{{ student.username }}</td>
+                                    <td>{{ student.name }}</td>
+                                    <td>{{ student.department or 'N/A' }}</td>
+                                    <td class="text-center">
+                                        <input type="radio" name="attendance_{{ student.id }}" value="present" 
+                                               {% if attendance_records.get(student.id) and attendance_records.get(student.id).status == 'present' %}checked{% endif %}
+                                               class="form-check-input">
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="radio" name="attendance_{{ student.id }}" value="absent" 
+                                               {% if attendance_records.get(student.id) and attendance_records.get(student.id).status == 'absent' %}checked{% endif %}
+                                               class="form-check-input">
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="radio" name="attendance_{{ student.id }}" value="late" 
+                                               {% if attendance_records.get(student.id) and attendance_records.get(student.id).status == 'late' %}checked{% endif %}
+                                               class="form-check-input">
+                                    </td>
+                                    <td>
+                                        {% if attendance_records.get(student.id) %}
+                                            {% set record = attendance_records.get(student.id) %}
+                                            {% if record.status == 'present' %}
+                                                <span class="badge bg-success">Present</span>
+                                            {% elif record.status == 'absent' %}
+                                                <span class="badge bg-danger">Absent</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">Late</span>
+                                            {% endif %}
+                                            <small class="text-muted d-block">{{ record.marked_at.strftime('%H:%M') }}</small>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not marked</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between">
+                                <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                                </a>
+                                <div>
+                                    <button type="button" class="btn btn-info me-2" onclick="markAllPresent()">
+                                        <i class="fas fa-check-circle me-1"></i>Mark All Present
+                                    </button>
+                                    <button type="button" class="btn btn-warning me-2" onclick="clearAll()">
+                                        <i class="fas fa-eraser me-1"></i>Clear All
+                                    </button>
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="fas fa-save me-1"></i>Save Attendance
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function markAllPresent() {
+    const presentRadios = document.querySelectorAll('input[type="radio"][value="present"]');
+    presentRadios.forEach(radio => {
+        radio.checked = true;
+    });
+    showAlert('All students marked as present', 'success');
+}
+
+function clearAll() {
+    const allRadios = document.querySelectorAll('input[type="radio"]');
+    allRadios.forEach(radio => {
+        radio.checked = false;
+    });
+    showAlert('All attendance cleared', 'info');
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+
+// Form validation before submit
+document.querySelector('form').addEventListener('submit', function(e) {
+    const checkedRadios = document.querySelectorAll('input[type="radio"]:checked');
+    if (checkedRadios.length === 0) {
+        e.preventDefault();
+        showAlert('Please mark attendance for at least one student', 'warning');
+        return false;
+    }
+    
+    // Show loading state
+    const submitBtn = document.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    submitBtn.disabled = true;
+    
+    // Re-enable after 10 seconds as fallback
+    setTimeout(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }, 10000);
+});
+</script>
+{% endblock %}

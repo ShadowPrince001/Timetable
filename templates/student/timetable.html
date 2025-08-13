@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}My Timetable - Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-calendar-alt text-info me-2"></i>
+            My Timetable
+        </h1>
+        <p class="text-muted">Your weekly class schedule</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-table me-2"></i>Weekly Schedule
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if timetables %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Day</th>
+                                <th>Time</th>
+                                <th>Course</th>
+                                <th>Course Code</th>
+                                <th>Faculty</th>
+                                <th>Classroom</th>
+                                <th>Building</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for timetable in timetables %}
+                            <tr>
+                                <td>
+                                    <strong class="text-primary">{{ timetable.time_slot.day }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ timetable.time_slot.start_time }} - {{ timetable.time_slot.end_time }}</span>
+                                </td>
+                                <td>{{ timetable.course.name }}</td>
+                                <td><code>{{ timetable.course.code }}</code></td>
+                                <td>
+                                    <i class="fas fa-user-tie me-1"></i>{{ timetable.teacher.name }}
+                                </td>
+                                <td>
+                                    <i class="fas fa-door-open me-1"></i>{{ timetable.classroom.room_number }}
+                                </td>
+                                <td>{{ timetable.classroom.building }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Weekly View Grid -->
+                <div class="mt-5">
+                    <h5 class="mb-3"><i class="fas fa-calendar-week me-2"></i>Weekly Grid View</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="bg-primary text-white">
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Monday</th>
+                                    <th>Tuesday</th>
+                                    <th>Wednesday</th>
+                                    <th>Thursday</th>
+                                    <th>Friday</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set time_slots = ['09:00-10:00', '10:00-11:00', '11:15-12:15', '12:15-13:15', '14:00-15:00', '15:00-16:00'] %}
+                                {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                
+                                {% for time in time_slots %}
+                                <tr>
+                                    <td class="bg-light"><strong>{{ time }}</strong></td>
+                                    {% for day in days %}
+                                    <td>
+                                        {% for timetable in timetables %}
+                                            {% if timetable.time_slot.day == day and (timetable.time_slot.start_time + '-' + timetable.time_slot.end_time) == time %}
+                                                <div class="text-center p-2 bg-info text-white rounded">
+                                                    <small><strong>{{ timetable.course.code }}</strong></small><br>
+                                                    <small>{{ timetable.classroom.room_number }}</small>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-calendar-times fa-4x text-muted mb-4"></i>
+                    <h4 class="text-muted">No Timetable Available</h4>
+                    <p class="text-muted">Your timetable has not been assigned yet. Please contact the administration.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row">
+    <div class="col-md-3">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Total Classes
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Unique Courses
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='course')|unique|list|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-book fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Different Rooms
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='classroom')|unique|list|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-building fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Faculty Members
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='teacher')|unique|list|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-chalkboard-teacher fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <button class="btn btn-outline-info" onclick="printTimetable()">
+                    <i class="fas fa-print me-1"></i>Print Timetable
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function printTimetable() {
+    window.print();
+}
+</script>
+{% endblock %}
+

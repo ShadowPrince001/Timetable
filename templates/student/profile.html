@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-user-circle text-info me-2"></i>
+            My Profile
+        </h1>
+        <p class="text-muted">View and manage your profile information</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-user me-2"></i>Profile Picture
+                </h6>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <div class="profile-avatar mx-auto mb-3">
+                        <i class="fas fa-user-circle fa-8x text-muted"></i>
+                    </div>
+                    <h5>{{ user.name }}</h5>
+                    <p class="text-muted">{{ user.role|title }}</p>
+                    <span class="badge bg-info">{{ user.department or 'No Department' }}</span>
+                </div>
+                
+                <div class="mt-4">
+                    <button class="btn btn-outline-primary btn-sm" disabled>
+                        <i class="fas fa-camera me-1"></i>Change Photo
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow mt-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-chart-pie me-2"></i>Quick Stats
+                </h6>
+            </div>
+            <div class="card-body">
+                {% set total = user.attendance_records|length %}
+                {% set present = user.attendance_records|selectattr('status', 'equalto', 'present')|list|length %}
+                {% set attendance_pct = (present / total * 100) if total > 0 else 0 %}
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Overall Attendance:</span>
+                        <strong>{{ "%.1f"|format(attendance_pct) }}%</strong>
+                    </div>
+                    <div class="progress mt-1">
+                        <div class="progress-bar 
+                            {% if attendance_pct >= 75 %}bg-success
+                            {% elif attendance_pct >= 60 %}bg-warning
+                            {% else %}bg-danger{% endif %}" 
+                            style="width: {{ attendance_pct }}%">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Total Classes:</span>
+                        <strong>{{ total }}</strong>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Classes Attended:</span>
+                        <strong>{{ present }}</strong>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Member Since:</span>
+                        <strong>{{ user.created_at.strftime('%B %Y') }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-info-circle me-2"></i>Personal Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <form>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="name" class="form-label">Full Name</label>
+                                <input type="text" class="form-control" id="name" value="{{ user.name }}" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="username" class="form-label">Student ID</label>
+                                <input type="text" class="form-control" id="username" value="{{ user.username }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="email" class="form-label">Email Address</label>
+                                <input type="email" class="form-control" id="email" value="{{ user.email }}" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="department" class="form-label">Department</label>
+                                <input type="text" class="form-control" id="department" value="{{ user.department or 'Not specified' }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="role" class="form-label">Role</label>
+                                <input type="text" class="form-control" id="role" value="{{ user.role|title }}" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="created_at" class="form-label">Account Created</label>
+                                <input type="text" class="form-control" id="created_at" value="{{ user.created_at.strftime('%B %d, %Y') }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> To update your personal information, please contact the administration office.
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card shadow mt-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-cog me-2"></i>Account Settings
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Security</h6>
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <i class="fas fa-lock text-success me-2"></i>
+                                <span>Password protected account</span>
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-shield-alt text-success me-2"></i>
+                                <span>Secure login enabled</span>
+                            </li>
+                        </ul>
+                        
+                        <button class="btn btn-outline-warning btn-sm" disabled>
+                            <i class="fas fa-key me-1"></i>Change Password
+                        </button>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Preferences</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="emailNotifications" checked disabled>
+                            <label class="form-check-label" for="emailNotifications">
+                                Email notifications
+                            </label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="attendanceAlerts" checked disabled>
+                            <label class="form-check-label" for="attendanceAlerts">
+                                Low attendance alerts
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="scheduleUpdates" checked disabled>
+                            <label class="form-check-label" for="scheduleUpdates">
+                                Schedule update notifications
+                            </label>
+                        </div>
+                        
+                        <small class="text-muted">Contact administration to modify notification preferences.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <a href="{{ url_for('student_timetable') }}" class="btn btn-outline-info">
+                    <i class="fas fa-calendar me-1"></i>View Timetable
+                </a>
+                <a href="{{ url_for('student_attendance_history') }}" class="btn btn-outline-success">
+                    <i class="fas fa-history me-1"></i>Attendance History
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.profile-avatar {
+    width: 150px;
+    height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #f8f9fa;
+    border: 3px solid #dee2e6;
+}
+</style>
+{% endblock %}
+

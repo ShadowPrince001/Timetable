@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Alerts - Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+            Attendance Alerts
+        </h1>
+        <p class="text-muted">Important notifications about your attendance status</p>
+    </div>
+</div>
+
+<!-- Active Alerts -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-warning">
+                    <i class="fas fa-bell me-2"></i>Active Alerts
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if alerts %}
+                    {% for alert in alerts %}
+                    <div class="alert alert-{{ alert.type }} alert-dismissible fade show" role="alert">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-exclamation-triangle me-2"></i>{{ alert.title }}
+                        </h6>
+                        <p class="mb-0">{{ alert.message }}</p>
+                        {% if alert.course %}
+                        <hr>
+                        <small class="text-muted">
+                            <strong>Course:</strong> {{ alert.course.code }} - {{ alert.course.name }}
+                        </small>
+                        {% endif %}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                        <h5 class="text-success">No Active Alerts</h5>
+                        <p class="text-muted">Great job! Your attendance is meeting all requirements.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Course-wise Attendance Summary -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-chart-bar me-2"></i>Course-wise Attendance Summary
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if course_stats %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Course Name</th>
+                                <th>Total Classes</th>
+                                <th>Present</th>
+                                <th>Absent</th>
+                                <th>Late</th>
+                                <th>Attendance %</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for course_id, stats in course_stats.items() %}
+                            <tr>
+                                <td><code>{{ stats.course.code }}</code></td>
+                                <td>{{ stats.course.name }}</td>
+                                <td>{{ stats.total }}</td>
+                                <td><span class="badge bg-success">{{ stats.present }}</span></td>
+                                <td><span class="badge bg-danger">{{ stats.absent }}</span></td>
+                                <td><span class="badge bg-warning">{{ stats.late }}</span></td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar 
+                                            {% if stats.percentage >= 75 %}bg-success
+                                            {% elif stats.percentage >= 60 %}bg-warning
+                                            {% else %}bg-danger{% endif %}" 
+                                            role="progressbar" 
+                                            style="width: {{ stats.percentage }}%">
+                                            {{ "%.1f"|format(stats.percentage) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if stats.percentage >= 75 %}
+                                        <span class="badge bg-success">Good</span>
+                                    {% elif stats.percentage >= 60 %}
+                                        <span class="badge bg-warning">Warning</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Critical</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No Attendance Data Available</h5>
+                    <p class="text-muted">Your attendance records will appear here once faculty starts taking attendance.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recommendations -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-lightbulb me-2"></i>Recommendations
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card border-left-primary">
+                            <div class="card-body">
+                                <h6 class="card-title text-primary">
+                                    <i class="fas fa-calendar-check me-2"></i>Improve Attendance
+                                </h6>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Attend all scheduled classes</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Arrive on time to avoid late marks</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Communicate with faculty if you must miss a class</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-left-info">
+                            <div class="card-body">
+                                <h6 class="card-title text-info">
+                                    <i class="fas fa-user-graduate me-2"></i>Academic Success
+                                </h6>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Maintain 75%+ attendance for good standing</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Review attendance history regularly</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Seek help if attendance drops below 60%</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <a href="{{ url_for('student_attendance_history') }}" class="btn btn-outline-info">
+                    <i class="fas fa-history me-1"></i>View Full History
+                </a>
+                <a href="{{ url_for('student_timetable') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-calendar me-1"></i>View Timetable
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
