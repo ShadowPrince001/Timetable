@@ -171,6 +171,9 @@ def admin_dashboard():
         total_faculty = User.query.filter_by(role='faculty').count()
         total_courses = Course.query.count()
         total_classrooms = Classroom.query.count()
+        total_time_slots = TimeSlot.query.count()
+        total_timetables = Timetable.query.count()
+        total_attendance = Attendance.query.count()
         
         # Get recent attendance data
         recent_attendance = Attendance.query.order_by(Attendance.marked_at.desc()).limit(10).all()
@@ -193,6 +196,9 @@ def admin_dashboard():
         total_faculty = 0
         total_courses = 0
         total_classrooms = 0
+        total_time_slots = 0
+        total_timetables = 0
+        total_attendance = 0
         recent_attendance = []
     
     return render_template('admin/dashboard.html', 
@@ -200,6 +206,9 @@ def admin_dashboard():
                          total_faculty=total_faculty,
                          total_courses=total_courses,
                          total_classrooms=total_classrooms,
+                         total_time_slots=total_time_slots,
+                         total_timetables=total_timetables,
+                         total_attendance=total_attendance,
                          recent_attendance=recent_attendance)
 
 @app.route('/faculty/dashboard')
@@ -409,11 +418,31 @@ def admin_timetable():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    timetables = Timetable.query.all()
-    courses = Course.query.all()
-    classrooms = Classroom.query.all()
-    teachers = User.query.filter_by(role='faculty').all()
-    time_slots = TimeSlot.query.all()
+    try:
+        timetables = Timetable.query.all()
+        courses = Course.query.all()
+        classrooms = Classroom.query.all()
+        teachers = User.query.filter_by(role='faculty').all()
+        time_slots = TimeSlot.query.all()
+        
+        # Ensure all relationships are loaded
+        for tt in timetables:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+            if not hasattr(tt, 'teacher') or not tt.teacher:
+                tt.teacher = User.query.get(tt.teacher_id)
+                
+    except Exception as e:
+        flash(f'Error loading timetable data: {str(e)}', 'error')
+        timetables = []
+        courses = []
+        classrooms = []
+        teachers = []
+        time_slots = []
     
     return render_template('admin/timetable.html', 
                          timetables=timetables,
@@ -421,6 +450,33 @@ def admin_timetable():
                          classrooms=classrooms,
                          teachers=teachers,
                          time_slots=time_slots)
+
+@app.route('/admin/time_slots')
+@login_required
+def admin_time_slots():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        time_slots = TimeSlot.query.order_by(
+            db.case(
+                (TimeSlot.day == 'Monday', 1),
+                (TimeSlot.day == 'Tuesday', 2),
+                (TimeSlot.day == 'Wednesday', 3),
+                (TimeSlot.day == 'Thursday', 4),
+                (TimeSlot.day == 'Friday', 5),
+                (TimeSlot.day == 'Saturday', 6),
+                else_=7
+            ),
+            TimeSlot.start_time
+        ).all()
+        
+    except Exception as e:
+        flash(f'Error loading time slots: {str(e)}', 'error')
+        time_slots = []
+    
+    return render_template('admin/time_slots.html', time_slots=time_slots)
 
 @app.route('/admin/add_user', methods=['GET', 'POST'])
 @login_required
@@ -992,67 +1048,77 @@ def student_attendance_alerts():
 # Timetable Management Routes
 @app.route('/admin/add_timetable_entry', methods=['POST'])
 @login_required
-def add_timetable_entry():
+def admin_add_timetable_entry():
     if current_user.role != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    course_id = int(request.form['course_id'])
-    teacher_id = int(request.form['teacher_id'])
-    classroom_id = int(request.form['classroom_id'])
-    time_slot_id = int(request.form['time_slot_id'])
-    semester = request.form['semester']
-    academic_year = request.form['academic_year']
+    try:
+        course_id = int(request.form['course_id'])
+        teacher_id = int(request.form['teacher_id'])
+        classroom_id = int(request.form['classroom_id'])
+        time_slot_id = int(request.form['time_slot_id'])
+        semester = request.form['semester']
+        academic_year = request.form['academic_year']
+        
+        # Check for conflicts
+        existing = Timetable.query.filter_by(
+            classroom_id=classroom_id,
+            time_slot_id=time_slot_id,
+            academic_year=academic_year,
+            semester=semester
+        ).first()
+        
+        if existing:
+            flash('Classroom is already booked for this time slot', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        # Check teacher availability
+        teacher_conflict = Timetable.query.filter_by(
+            teacher_id=teacher_id,
+            time_slot_id=time_slot_id,
+            academic_year=academic_year,
+            semester=semester
+        ).first()
+        
+        if teacher_conflict:
+            flash('Teacher is already assigned to another class at this time', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        new_timetable = Timetable(
+            course_id=course_id,
+            teacher_id=teacher_id,
+            classroom_id=classroom_id,
+            time_slot_id=time_slot_id,
+            semester=semester,
+            academic_year=academic_year
+        )
+        
+        db.session.add(new_timetable)
+        db.session.commit()
+        flash('Timetable entry added successfully', 'success')
+        
+    except Exception as e:
+        flash(f'Error adding timetable entry: {str(e)}', 'error')
     
-    # Check for conflicts
-    existing = Timetable.query.filter_by(
-        classroom_id=classroom_id,
-        time_slot_id=time_slot_id,
-        academic_year=academic_year,
-        semester=semester
-    ).first()
-    
-    if existing:
-        flash('Classroom is already booked for this time slot', 'error')
-        return redirect(url_for('admin_timetable'))
-    
-    # Check teacher availability
-    teacher_conflict = Timetable.query.filter_by(
-        teacher_id=teacher_id,
-        time_slot_id=time_slot_id,
-        academic_year=academic_year,
-        semester=semester
-    ).first()
-    
-    if teacher_conflict:
-        flash('Teacher is already assigned to another class at this time', 'error')
-        return redirect(url_for('admin_timetable'))
-    
-    new_timetable = Timetable(
-        course_id=course_id,
-        teacher_id=teacher_id,
-        classroom_id=classroom_id,
-        time_slot_id=time_slot_id,
-        semester=semester,
-        academic_year=academic_year
-    )
-    
-    db.session.add(new_timetable)
-    db.session.commit()
-    flash('Timetable entry added successfully', 'success')
     return redirect(url_for('admin_timetable'))
 
 @app.route('/admin/delete_timetable/<int:timetable_id>', methods=['POST'])
 @login_required
-def delete_timetable(timetable_id):
+def admin_delete_timetable(timetable_id):
     if current_user.role != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    timetable = Timetable.query.get_or_404(timetable_id)
-    db.session.delete(timetable)
-    db.session.commit()
-    flash('Timetable entry deleted successfully', 'success')
+    try:
+        timetable = Timetable.query.get_or_404(timetable_id)
+        db.session.delete(timetable)
+        db.session.commit()
+        flash('Timetable entry deleted successfully', 'success')
+        
+    except Exception as e:
+        flash(f'Error deleting timetable entry: {str(e)}', 'error')
+    
     return redirect(url_for('admin_timetable'))
 
 # Missing API and utility routes
@@ -1213,6 +1279,149 @@ def admin_add_sample_attendance():
         flash(f'Error creating sample attendance: {str(e)}', 'error')
     
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/add_time_slot', methods=['POST'])
+@login_required
+def admin_add_time_slot():
+    """Add new time slot"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        day = request.form['day']
+        start_time = request.form['start_time']
+        end_time = request.form['end_time']
+        
+        # Check if time slot already exists
+        existing = TimeSlot.query.filter_by(
+            day=day,
+            start_time=start_time,
+            end_time=end_time
+        ).first()
+        
+        if existing:
+            flash('Time slot already exists', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        new_time_slot = TimeSlot(
+            day=day,
+            start_time=start_time,
+            end_time=end_time
+        )
+        
+        db.session.add(new_time_slot)
+        db.session.commit()
+        flash('Time slot added successfully', 'success')
+        
+    except Exception as e:
+        flash(f'Error adding time slot: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_timetable'))
+
+@app.route('/admin/edit_time_slot/<int:time_slot_id>', methods=['POST'])
+@login_required
+def admin_edit_time_slot(time_slot_id):
+    """Edit time slot"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        time_slot = TimeSlot.query.get_or_404(time_slot_id)
+        
+        day = request.form['day']
+        start_time = request.form['start_time']
+        end_time = request.form['end_time']
+        
+        # Check if time slot already exists (excluding current one)
+        existing = TimeSlot.query.filter(
+            TimeSlot.day == day,
+            TimeSlot.start_time == start_time,
+            TimeSlot.end_time == end_time,
+            TimeSlot.id != time_slot_id
+        ).first()
+        
+        if existing:
+            flash('Time slot already exists', 'error')
+            return redirect(url_for('admin_time_slots'))
+        
+        time_slot.day = day
+        time_slot.start_time = start_time
+        time_slot.end_time = end_time
+        
+        db.session.commit()
+        flash('Time slot updated successfully', 'success')
+        
+    except Exception as e:
+        flash(f'Error updating time slot: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_time_slots'))
+
+@app.route('/admin/delete_time_slot/<int:time_slot_id>', methods=['POST'])
+@login_required
+def admin_delete_time_slot(time_slot_id):
+    """Delete time slot"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        time_slot = TimeSlot.query.get_or_404(time_slot_id)
+        
+        # Check if time slot is used in timetables
+        used_in_timetables = Timetable.query.filter_by(time_slot_id=time_slot_id).first()
+        if used_in_timetables:
+            flash('Cannot delete time slot as it is used in timetables', 'error')
+            return redirect(url_for('admin_time_slots'))
+        
+        db.session.delete(time_slot)
+        db.session.commit()
+        flash('Time slot deleted successfully', 'success')
+        
+    except Exception as e:
+        flash(f'Error deleting time slot: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_time_slots'))
+
+@app.route('/admin/edit_timetable/<int:timetable_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_timetable(timetable_id):
+    """Edit timetable entry"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetable = Timetable.query.get_or_404(timetable_id)
+    
+    if request.method == 'POST':
+        try:
+            timetable.course_id = int(request.form['course_id'])
+            timetable.teacher_id = int(request.form['teacher_id'])
+            timetable.classroom_id = int(request.form['classroom_id'])
+            timetable.time_slot_id = int(request.form['time_slot_id'])
+            timetable.semester = request.form['semester']
+            timetable.academic_year = request.form['academic_year']
+            
+            db.session.commit()
+            flash('Timetable updated successfully', 'success')
+            return redirect(url_for('admin_timetable'))
+            
+        except Exception as e:
+            flash(f'Error updating timetable: {str(e)}', 'error')
+    
+    # Get data for form
+    courses = Course.query.all()
+    teachers = User.query.filter_by(role='faculty').all()
+    classrooms = Classroom.query.all()
+    time_slots = TimeSlot.query.all()
+    
+    return render_template('admin/edit_timetable.html', 
+                         timetable=timetable,
+                         courses=courses,
+                         teachers=teachers,
+                         classrooms=classrooms,
+                         time_slots=time_slots)
 
 # Initialize database
 def init_db():
