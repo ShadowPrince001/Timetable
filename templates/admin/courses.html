@@ -54,12 +54,14 @@
                                 </td>
                                 <td>{{ course.max_students }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-primary">
+                                    <a href="{{ url_for('admin_edit_course', course_id=course.id) }}" class="btn btn-sm btn-outline-primary" title="Edit Course">
                                         <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+                                    </a>
+                                    <form method="POST" action="{{ url_for('admin_delete_course', course_id=course.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this course?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Course">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                             {% endfor %}

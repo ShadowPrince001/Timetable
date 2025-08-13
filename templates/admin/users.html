@@ -16,19 +16,32 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card shadow">
-            <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 font-weight-bold text-primary">
-                    <i class="fas fa-user-plus me-2"></i>All Users
-                </h6>
-                <a href="{{ url_for('admin_add_user') }}" class="btn btn-primary btn-sm">
-                    <i class="fas fa-plus me-1"></i>Add User
-                </a>
+            <div class="card-header py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-user-plus me-2"></i>All Users
+                    </h6>
+                    <div class="d-flex gap-2">
+                        <div class="search-box">
+                            <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search users...">
+                        </div>
+                        <button id="bulkActionBtn" class="btn btn-outline-danger btn-sm" style="display: none;" onclick="bulkDeleteUsers()">
+                            <i class="fas fa-trash me-1"></i>Delete Selected
+                        </button>
+                        <a href="{{ url_for('admin_add_user') }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-plus me-1"></i>Add User
+                        </a>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-bordered" width="100%" cellspacing="0">
                         <thead>
                             <tr>
+                                <th>
+                                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                                </th>
                                 <th>ID</th>
                                 <th>Name</th>
                                 <th>Username</th>
@@ -42,6 +55,9 @@
                         <tbody>
                             {% for user in users %}
                             <tr>
+                                <td>
+                                    <input type="checkbox" class="user-checkbox" value="{{ user.id }}">
+                                </td>
                                 <td>{{ user.id }}</td>
                                 <td>{{ user.name }}</td>
                                 <td>{{ user.username }}</td>
@@ -58,12 +74,16 @@
                                 <td>{{ user.department or 'N/A' }}</td>
                                 <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-primary">
+                                    <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Edit User">
                                         <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+                                    </a>
+                                    {% if user.id != current_user.id %}
+                                    <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}" class="d-inline" onsubmit="return confirmDelete('{{ user.name }}')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete User">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -155,4 +175,120 @@
         </div>
     </div>
 </div>
+
+<script>
+function confirmDelete(userName) {
+    return confirm(`Are you sure you want to delete user "${userName}"? This action cannot be undone.`);
+}
+
+function bulkDeleteUsers() {
+    const selectedUsers = document.querySelectorAll('.user-checkbox:checked');
+    if (selectedUsers.length === 0) {
+        alert('Please select users to delete');
+        return;
+    }
+    
+    if (confirm(`Are you sure you want to delete ${selectedUsers.length} users? This action cannot be undone.`)) {
+        const userIds = Array.from(selectedUsers).map(checkbox => checkbox.value);
+        
+        // Show loading state
+        const bulkBtn = document.getElementById('bulkActionBtn');
+        const originalText = bulkBtn.innerHTML;
+        bulkBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+        bulkBtn.disabled = true;
+        
+        fetch('/admin/bulk_delete_users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({user_ids: userIds})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Users deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('Error deleting users: ' + data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('Error deleting users', 'danger');
+        })
+        .finally(() => {
+            bulkBtn.innerHTML = originalText;
+            bulkBtn.disabled = false;
+        });
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Add bulk selection functionality
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const userCheckboxes = document.querySelectorAll('.user-checkbox');
+    
+    userCheckboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkActions();
+}
+
+function updateBulkActions() {
+    const selectedUsers = document.querySelectorAll('.user-checkbox:checked');
+    const bulkActionBtn = document.getElementById('bulkActionBtn');
+    
+    if (bulkActionBtn) {
+        bulkActionBtn.style.display = selectedUsers.length > 0 ? 'inline-block' : 'none';
+    }
+}
+
+// Add search functionality
+function searchUsers() {
+    const searchInput = document.getElementById('userSearch');
+    const table = document.querySelector('table tbody');
+    const rows = table.querySelectorAll('tr');
+    
+    if (searchInput) {
+        const searchTerm = searchInput.value.toLowerCase();
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(searchTerm) ? '' : 'none';
+        });
+    }
+}
+
+// Initialize search functionality if search input exists
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('userSearch');
+    if (searchInput) {
+        searchInput.addEventListener('keyup', searchUsers);
+    }
+    
+    // Add event listeners to user checkboxes
+    const userCheckboxes = document.querySelectorAll('.user-checkbox');
+    userCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActions);
+    });
+});
+</script>
 {% endblock %}

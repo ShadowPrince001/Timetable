@@ -50,12 +50,14 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-primary">
+                                    <a href="{{ url_for('admin_edit_classroom', classroom_id=classroom.id) }}" class="btn btn-sm btn-outline-primary" title="Edit Classroom">
                                         <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+                                    </a>
+                                    <form method="POST" action="{{ url_for('admin_delete_classroom', classroom_id=classroom.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this classroom?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Classroom">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                             {% endfor %}

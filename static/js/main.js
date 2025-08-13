@@ -2,10 +2,14 @@
 
 $(document).ready(function() {
     // Initialize tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+    try {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    } catch (e) {
+        console.warn('Tooltip initialization failed:', e);
+    }
 
     // Initialize popovers
     var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
@@ -392,4 +396,230 @@ function updateProgressCircle(percentage) {
         'conic-gradient(#28a745 0deg ' + (percentage * 3.6) + 'deg, #e9ecef ' + (percentage * 3.6) + 'deg 360deg)'
     );
     $('.percentage').text(percentage + '%');
-} 
+}
+
+// Enhanced attendance marking functions
+function markAllPresent() {
+    $('.attendance-radio[value="present"]').prop('checked', true).trigger('change');
+    showAlert('All students marked as present', 'success');
+}
+
+function markAllAbsent() {
+    $('.attendance-radio[value="absent"]').prop('checked', true).trigger('change');
+    showAlert('All students marked as absent', 'warning');
+}
+
+function clearAllAttendance() {
+    $('.attendance-radio').prop('checked', false).trigger('change');
+    showAlert('All attendance cleared', 'info');
+}
+
+// Filter table rows
+function filterTable(status) {
+    const rows = document.querySelectorAll('#attendanceTable tbody tr');
+    
+    rows.forEach(row => {
+        if (status === 'all' || row.dataset.status === status) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update button states
+    $('.filter-buttons .btn').removeClass('active');
+    $('.filter-buttons .btn[onclick*="' + status + '"]').addClass('active');
+}
+
+// Bulk actions for admin
+function bulkDeleteUsers() {
+    const selectedUsers = $('.user-checkbox:checked');
+    if (selectedUsers.length === 0) {
+        showAlert('Please select users to delete', 'warning');
+        return;
+    }
+    
+    if (confirm('Are you sure you want to delete ' + selectedUsers.length + ' users?')) {
+        const userIds = [];
+        selectedUsers.each(function() {
+            userIds.push($(this).val());
+        });
+        
+        $.ajax({
+            url: '/admin/bulk_delete_users',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({user_ids: userIds}),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Users deleted successfully', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('Error deleting users', 'danger');
+                }
+            }
+        });
+    }
+}
+
+// Auto-save functionality
+function enableAutoSave(formId) {
+    $('#' + formId + ' input, #' + formId + ' select, #' + formId + ' textarea').on('change', function() {
+        const formData = $('#' + formId).serialize();
+        
+        $.ajax({
+            url: '/api/autosave',
+            method: 'POST',
+            data: formData,
+            success: function(response) {
+                if (response.success) {
+                    $('.autosave-indicator').text('✓ Saved').removeClass('text-warning').addClass('text-success');
+                }
+            },
+            error: function() {
+                $('.autosave-indicator').text('⚠ Error saving').removeClass('text-success').addClass('text-warning');
+            }
+        });
+    });
+}
+
+// Dashboard real-time updates
+function initializeDashboard() {
+    // Update statistics cards with animation
+    function animateNumber(element, targetNumber) {
+        const startNumber = parseInt(element.text()) || 0;
+        const increment = (targetNumber - startNumber) / 20;
+        
+        let currentNumber = startNumber;
+        const timer = setInterval(function() {
+            currentNumber += increment;
+            if ((increment > 0 && currentNumber >= targetNumber) || 
+                (increment < 0 && currentNumber <= targetNumber)) {
+                currentNumber = targetNumber;
+                clearInterval(timer);
+            }
+            element.text(Math.floor(currentNumber));
+        }, 50);
+    }
+    
+    // Refresh dashboard data
+    function refreshDashboardData() {
+        $.ajax({
+            url: '/api/dashboard-stats',
+            method: 'GET',
+            success: function(response) {
+                if (response.stats) {
+                    Object.keys(response.stats).forEach(key => {
+                        const element = $('[data-stat="' + key + '"]');
+                        if (element.length) {
+                            animateNumber(element, response.stats[key]);
+                        }
+                    });
+                }
+            }
+        });
+    }
+    
+    // Refresh every 5 minutes
+    setInterval(refreshDashboardData, 300000);
+}
+
+// Enhanced form validation
+function setupFormValidation() {
+    // Real-time validation
+    $('form input[required], form select[required]').on('blur', function() {
+        validateField($(this));
+    });
+    
+    // Password strength indicator
+    $('input[type="password"]').on('input', function() {
+        const password = $(this).val();
+        const strength = calculatePasswordStrength(password);
+        updatePasswordStrength($(this), strength);
+    });
+}
+
+function validateField(field) {
+    const value = field.val().trim();
+    const fieldType = field.attr('type');
+    let isValid = true;
+    let message = '';
+    
+    if (field.prop('required') && !value) {
+        isValid = false;
+        message = 'This field is required';
+    } else if (fieldType === 'email' && value && !isValidEmail(value)) {
+        isValid = false;
+        message = 'Please enter a valid email address';
+    } else if (fieldType === 'password' && value && value.length < 6) {
+        isValid = false;
+        message = 'Password must be at least 6 characters long';
+    }
+    
+    if (isValid) {
+        field.removeClass('is-invalid').addClass('is-valid');
+        field.siblings('.invalid-feedback').hide();
+    } else {
+        field.removeClass('is-valid').addClass('is-invalid');
+        field.siblings('.invalid-feedback').text(message).show();
+    }
+    
+    return isValid;
+}
+
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function calculatePasswordStrength(password) {
+    let strength = 0;
+    if (password.length >= 6) strength++;
+    if (password.length >= 10) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
+    return strength;
+}
+
+function updatePasswordStrength(field, strength) {
+    const indicator = field.siblings('.password-strength');
+    const strengthText = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+    const strengthColors = ['danger', 'warning', 'info', 'success', 'success'];
+    
+    if (indicator.length) {
+        indicator.removeClass('text-danger text-warning text-info text-success')
+                .addClass('text-' + strengthColors[strength])
+                .text(strengthText[strength]);
+    }
+}
+
+// Initialize everything when document is ready
+$(document).ready(function() {
+    initializeDashboard();
+    setupFormValidation();
+    
+    // Add smooth scrolling
+    $('a[href^="#"]').on('click', function(e) {
+        e.preventDefault();
+        const target = $($(this).attr('href'));
+        if (target.length) {
+            $('html, body').animate({
+                scrollTop: target.offset().top - 70
+            }, 500);
+        }
+    });
+    
+    // Add loading states to forms
+    $('form').on('submit', function() {
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.text();
+        submitBtn.html('<span class="spinner-border spinner-border-sm me-2"></span>Processing...')
+                .prop('disabled', true);
+        
+        // Re-enable after 10 seconds as fallback
+        setTimeout(function() {
+            submitBtn.text(originalText).prop('disabled', false);
+        }, 10000);
+    });
+}); 

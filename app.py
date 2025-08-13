@@ -47,6 +47,9 @@ class Course(db.Model):
     department = db.Column(db.String(100), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     max_students = db.Column(db.Integer, default=50)
+    
+    # Relationships
+    teacher = db.relationship('User', backref='taught_courses')
 
 class Classroom(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -69,6 +72,12 @@ class Timetable(db.Model):
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     semester = db.Column(db.String(20), nullable=False)
     academic_year = db.Column(db.String(10), nullable=False)
+    
+    # Relationships
+    course = db.relationship('Course', backref='timetable_entries')
+    classroom = db.relationship('Classroom', backref='timetable_entries')
+    time_slot = db.relationship('TimeSlot', backref='timetable_entries')
+    teacher = db.relationship('User', backref='teaching_schedule')
 
 class StudentGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -90,6 +99,11 @@ class Attendance(db.Model):
     status = db.Column(db.String(20), nullable=False)  # present, absent, late
     marked_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     marked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    student = db.relationship('User', foreign_keys=[student_id], backref='attendance_records')
+    timetable = db.relationship('Timetable', backref='attendance_records')
+    marked_by_user = db.relationship('User', foreign_keys=[marked_by], backref='marked_attendance')
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -203,13 +217,22 @@ def student_dashboard():
     # Get attendance statistics
     total_classes = Attendance.query.filter_by(student_id=current_user.id).count()
     present_classes = Attendance.query.filter_by(student_id=current_user.id, status='present').count()
+    late_classes = Attendance.query.filter_by(student_id=current_user.id, status='late').count()
     attendance_percentage = (present_classes / total_classes * 100) if total_classes > 0 else 0
+    
+    # Get today's classes (simplified - get sample timetable data)
+    today = datetime.now().strftime('%A')
+    today_classes = Timetable.query.join(TimeSlot).filter(
+        TimeSlot.day == today
+    ).limit(5).all()
     
     return render_template('student/dashboard.html',
                          attendance_records=attendance_records,
                          total_classes=total_classes,
                          present_classes=present_classes,
-                         attendance_percentage=attendance_percentage)
+                         late_classes=late_classes,
+                         attendance_percentage=attendance_percentage,
+                         today_classes=today_classes)
 
 # API Routes for AJAX calls
 @app.route('/api/mark-attendance', methods=['POST'])
@@ -427,6 +450,479 @@ def admin_add_classroom():
         return redirect(url_for('admin_classrooms'))
     
     return render_template('admin/add_classroom.html')
+
+# Edit and Delete Routes for Admin
+@app.route('/admin/edit_user/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_user(user_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    user = User.query.get_or_404(user_id)
+    
+    if request.method == 'POST':
+        user.name = request.form['name']
+        user.email = request.form['email']
+        user.role = request.form['role']
+        user.department = request.form['department']
+        
+        # Only update password if provided
+        if request.form['password']:
+            user.password_hash = generate_password_hash(request.form['password'])
+        
+        db.session.commit()
+        flash('User updated successfully', 'success')
+        return redirect(url_for('admin_users'))
+    
+    return render_template('admin/edit_user.html', user=user)
+
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@login_required
+def admin_delete_user(user_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent deleting the current user
+    if user.id == current_user.id:
+        flash('You cannot delete your own account', 'error')
+        return redirect(url_for('admin_users'))
+    
+    db.session.delete(user)
+    db.session.commit()
+    flash('User deleted successfully', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/edit_course/<int:course_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_course(course_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    course = Course.query.get_or_404(course_id)
+    
+    if request.method == 'POST':
+        course.name = request.form['name']
+        course.credits = int(request.form['credits'])
+        course.department = request.form['department']
+        course.teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
+        course.max_students = int(request.form['max_students'])
+        
+        db.session.commit()
+        flash('Course updated successfully', 'success')
+        return redirect(url_for('admin_courses'))
+    
+    teachers = User.query.filter_by(role='faculty').all()
+    return render_template('admin/edit_course.html', course=course, teachers=teachers)
+
+@app.route('/admin/delete_course/<int:course_id>', methods=['POST'])
+@login_required
+def admin_delete_course(course_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    course = Course.query.get_or_404(course_id)
+    db.session.delete(course)
+    db.session.commit()
+    flash('Course deleted successfully', 'success')
+    return redirect(url_for('admin_courses'))
+
+@app.route('/admin/edit_classroom/<int:classroom_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_classroom(classroom_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    classroom = Classroom.query.get_or_404(classroom_id)
+    
+    if request.method == 'POST':
+        classroom.room_number = request.form['room_number']
+        classroom.capacity = int(request.form['capacity'])
+        classroom.building = request.form['building']
+        classroom.equipment = request.form['equipment']
+        
+        db.session.commit()
+        flash('Classroom updated successfully', 'success')
+        return redirect(url_for('admin_classrooms'))
+    
+    return render_template('admin/edit_classroom.html', classroom=classroom)
+
+@app.route('/admin/delete_classroom/<int:classroom_id>', methods=['POST'])
+@login_required
+def admin_delete_classroom(classroom_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    classroom = Classroom.query.get_or_404(classroom_id)
+    db.session.delete(classroom)
+    db.session.commit()
+    flash('Classroom deleted successfully', 'success')
+    return redirect(url_for('admin_classrooms'))
+
+# Faculty Routes
+@app.route('/faculty/take_attendance/<int:timetable_id>')
+@login_required
+def take_attendance(timetable_id):
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetable = Timetable.query.get_or_404(timetable_id)
+    
+    # Verify this timetable belongs to the current faculty
+    if timetable.teacher_id != current_user.id:
+        flash('You can only take attendance for your own classes', 'error')
+        return redirect(url_for('faculty_dashboard'))
+    
+    # Get students enrolled in this course through student groups
+    students = db.session.query(User).join(
+        StudentGroupCourse, User.department == StudentGroupCourse.student_group_id  # This is simplified
+    ).filter(
+        StudentGroupCourse.course_id == timetable.course_id,
+        User.role == 'student'
+    ).all()
+    
+    # For now, get all students - we'll improve this later
+    students = User.query.filter_by(role='student').limit(20).all()
+    
+    # Get today's attendance records for this class
+    today = datetime.now().date()
+    attendance_records = {record.student_id: record for record in 
+                         Attendance.query.filter_by(timetable_id=timetable_id, date=today).all()}
+    
+    return render_template('faculty/take_attendance.html', 
+                         timetable=timetable, 
+                         students=students,
+                         attendance_records=attendance_records,
+                         today=today)
+
+@app.route('/faculty/save_attendance', methods=['POST'])
+@login_required
+def save_attendance():
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetable_id = request.form.get('timetable_id')
+    date_str = request.form.get('date')
+    date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    
+    # Get all form data for attendance
+    for key, value in request.form.items():
+        if key.startswith('attendance_'):
+            student_id = int(key.replace('attendance_', ''))
+            status = value
+            
+            # Check if attendance already exists
+            existing = Attendance.query.filter_by(
+                student_id=student_id,
+                timetable_id=timetable_id,
+                date=date
+            ).first()
+            
+            if existing:
+                existing.status = status
+                existing.marked_by = current_user.id
+                existing.marked_at = datetime.utcnow()
+            else:
+                new_attendance = Attendance(
+                    student_id=student_id,
+                    timetable_id=timetable_id,
+                    date=date,
+                    status=status,
+                    marked_by=current_user.id
+                )
+                db.session.add(new_attendance)
+    
+    db.session.commit()
+    flash('Attendance saved successfully', 'success')
+    return redirect(url_for('faculty_dashboard'))
+
+@app.route('/faculty/course_details/<int:course_id>')
+@login_required
+def course_details(course_id):
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    course = Course.query.get_or_404(course_id)
+    
+    # Verify this course belongs to the current faculty
+    if course.teacher_id != current_user.id:
+        flash('You can only view details for your own courses', 'error')
+        return redirect(url_for('faculty_dashboard'))
+    
+    # Get timetable entries for this course
+    timetables = Timetable.query.filter_by(course_id=course_id, teacher_id=current_user.id).all()
+    
+    return render_template('faculty/course_details.html', course=course, timetables=timetables)
+
+@app.route('/faculty/course_attendance/<int:course_id>')
+@login_required
+def course_attendance(course_id):
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    course = Course.query.get_or_404(course_id)
+    
+    # Verify this course belongs to the current faculty
+    if course.teacher_id != current_user.id:
+        flash('You can only view attendance for your own courses', 'error')
+        return redirect(url_for('faculty_dashboard'))
+    
+    # Get attendance records for this course
+    attendance_records = db.session.query(Attendance).join(
+        Timetable, Attendance.timetable_id == Timetable.id
+    ).filter(
+        Timetable.course_id == course_id,
+        Timetable.teacher_id == current_user.id
+    ).order_by(Attendance.date.desc()).all()
+    
+    return render_template('faculty/course_attendance.html', course=course, attendance_records=attendance_records)
+
+# Student Routes
+@app.route('/student/timetable')
+@login_required
+def student_timetable():
+    if current_user.role != 'student':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get student's full timetable (simplified - showing all timetables for demo)
+    timetables = Timetable.query.join(TimeSlot).order_by(
+        db.case(
+            (TimeSlot.day == 'Monday', 1),
+            (TimeSlot.day == 'Tuesday', 2),
+            (TimeSlot.day == 'Wednesday', 3),
+            (TimeSlot.day == 'Thursday', 4),
+            (TimeSlot.day == 'Friday', 5),
+            else_=6
+        ),
+        TimeSlot.start_time
+    ).all()
+    
+    return render_template('student/timetable.html', timetables=timetables)
+
+@app.route('/student/attendance_history')
+@login_required
+def student_attendance_history():
+    if current_user.role != 'student':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get all attendance records for the student
+    attendance_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
+    
+    # Get attendance statistics by course
+    course_stats = {}
+    for record in attendance_records:
+        course = record.timetable.course
+        if course.id not in course_stats:
+            course_stats[course.id] = {
+                'course': course,
+                'total': 0,
+                'present': 0,
+                'absent': 0,
+                'late': 0
+            }
+        
+        course_stats[course.id]['total'] += 1
+        course_stats[course.id][record.status] += 1
+    
+    # Calculate percentages
+    for course_id in course_stats:
+        stats = course_stats[course_id]
+        stats['percentage'] = (stats['present'] / stats['total'] * 100) if stats['total'] > 0 else 0
+    
+    return render_template('student/attendance_history.html', 
+                         attendance_records=attendance_records,
+                         course_stats=course_stats)
+
+@app.route('/student/profile')
+@login_required
+def student_profile():
+    if current_user.role != 'student':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('student/profile.html', user=current_user)
+
+# Timetable Management Routes
+@app.route('/admin/add_timetable_entry', methods=['POST'])
+@login_required
+def add_timetable_entry():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    course_id = int(request.form['course_id'])
+    teacher_id = int(request.form['teacher_id'])
+    classroom_id = int(request.form['classroom_id'])
+    time_slot_id = int(request.form['time_slot_id'])
+    semester = request.form['semester']
+    academic_year = request.form['academic_year']
+    
+    # Check for conflicts
+    existing = Timetable.query.filter_by(
+        classroom_id=classroom_id,
+        time_slot_id=time_slot_id,
+        academic_year=academic_year,
+        semester=semester
+    ).first()
+    
+    if existing:
+        flash('Classroom is already booked for this time slot', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    # Check teacher availability
+    teacher_conflict = Timetable.query.filter_by(
+        teacher_id=teacher_id,
+        time_slot_id=time_slot_id,
+        academic_year=academic_year,
+        semester=semester
+    ).first()
+    
+    if teacher_conflict:
+        flash('Teacher is already assigned to another class at this time', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    new_timetable = Timetable(
+        course_id=course_id,
+        teacher_id=teacher_id,
+        classroom_id=classroom_id,
+        time_slot_id=time_slot_id,
+        semester=semester,
+        academic_year=academic_year
+    )
+    
+    db.session.add(new_timetable)
+    db.session.commit()
+    flash('Timetable entry added successfully', 'success')
+    return redirect(url_for('admin_timetable'))
+
+@app.route('/admin/delete_timetable/<int:timetable_id>', methods=['POST'])
+@login_required
+def delete_timetable(timetable_id):
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetable = Timetable.query.get_or_404(timetable_id)
+    db.session.delete(timetable)
+    db.session.commit()
+    flash('Timetable entry deleted successfully', 'success')
+    return redirect(url_for('admin_timetable'))
+
+# Missing API and utility routes
+@app.route('/api/dashboard-stats')
+@login_required
+def api_dashboard_stats():
+    """API endpoint for real-time dashboard statistics"""
+    if current_user.role == 'admin':
+        stats = {
+            'total_students': User.query.filter_by(role='student').count(),
+            'total_faculty': User.query.filter_by(role='faculty').count(),
+            'total_courses': Course.query.count(),
+            'total_classrooms': Classroom.query.count(),
+            'total_attendance': Attendance.query.count()
+        }
+    elif current_user.role == 'faculty':
+        stats = {
+            'my_courses': Course.query.filter_by(teacher_id=current_user.id).count(),
+            'today_classes': Timetable.query.filter_by(teacher_id=current_user.id).join(TimeSlot).filter(
+                TimeSlot.day == datetime.now().strftime('%A')
+            ).count(),
+            'pending_attendance': 0  # Placeholder
+        }
+    else:  # student
+        total_classes = Attendance.query.filter_by(student_id=current_user.id).count()
+        present_classes = Attendance.query.filter_by(student_id=current_user.id, status='present').count()
+        stats = {
+            'total_classes': total_classes,
+            'present_classes': present_classes,
+            'attendance_percentage': (present_classes / total_classes * 100) if total_classes > 0 else 0
+        }
+    
+    return jsonify({'success': True, 'stats': stats})
+
+@app.route('/api/notifications')
+@login_required
+def api_notifications():
+    """API endpoint for notifications"""
+    notifications = Notification.query.filter_by(user_id=current_user.id, read=False).order_by(
+        Notification.created_at.desc()
+    ).limit(5).all()
+    
+    notification_data = []
+    for notif in notifications:
+        notification_data.append({
+            'id': notif.id,
+            'title': notif.title,
+            'message': notif.message,
+            'type': notif.type,
+            'created_at': notif.created_at.strftime('%H:%M')
+        })
+    
+    return jsonify({'success': True, 'notifications': notification_data})
+
+@app.route('/api/attendance-data')
+@login_required
+def api_attendance_data():
+    """API endpoint for real-time attendance data"""
+    if current_user.role == 'faculty':
+        attendance_records = db.session.query(Attendance).join(
+            Timetable, Attendance.timetable_id == Timetable.id
+        ).filter(
+            Timetable.teacher_id == current_user.id
+        ).order_by(Attendance.marked_at.desc()).limit(20).all()
+    else:
+        attendance_records = Attendance.query.filter_by(
+            student_id=current_user.id
+        ).order_by(Attendance.marked_at.desc()).limit(20).all()
+    
+    data = []
+    for record in attendance_records:
+        data.append({
+            'id': record.id,
+            'student': record.student.name,
+            'course': record.timetable.course.name,
+            'status': record.status,
+            'date': record.date.strftime('%Y-%m-%d'),
+            'marked_at': record.marked_at.strftime('%H:%M')
+        })
+    
+    return jsonify({'success': True, 'data': data})
+
+@app.route('/admin/bulk_delete_users', methods=['POST'])
+@login_required
+def admin_bulk_delete_users():
+    """Bulk delete users"""
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'message': 'Access denied'})
+    
+    data = request.get_json()
+    user_ids = data.get('user_ids', [])
+    
+    try:
+        for user_id in user_ids:
+            if int(user_id) != current_user.id:  # Don't delete current user
+                user = User.query.get(user_id)
+                if user:
+                    db.session.delete(user)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Deleted {len(user_ids)} users'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)})
 
 # Initialize database
 def init_db():
