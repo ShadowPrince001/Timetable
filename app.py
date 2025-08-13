@@ -37,6 +37,8 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False)  # admin, faculty, student
     name = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Course(db.Model):
@@ -47,6 +49,8 @@ class Course(db.Model):
     department = db.Column(db.String(100), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     max_students = db.Column(db.Integer, default=50)
+    semester = db.Column(db.String(20), default='1')
+    description = db.Column(db.Text)
     
     # Relationships
     teacher = db.relationship('User', backref='taught_courses')
@@ -56,6 +60,10 @@ class Classroom(db.Model):
     room_number = db.Column(db.String(20), unique=True, nullable=False)
     capacity = db.Column(db.Integer, nullable=False)
     building = db.Column(db.String(50), nullable=False)
+    room_type = db.Column(db.String(50), default='lecture')
+    floor = db.Column(db.Integer, default=1)
+    status = db.Column(db.String(20), default='active')
+    facilities = db.Column(db.Text)
     equipment = db.Column(db.String(200))
 
 class TimeSlot(db.Model):
@@ -63,6 +71,8 @@ class TimeSlot(db.Model):
     day = db.Column(db.String(20), nullable=False)  # Monday, Tuesday, etc.
     start_time = db.Column(db.String(10), nullable=False)  # HH:MM format
     end_time = db.Column(db.String(10), nullable=False)  # HH:MM format
+    break_type = db.Column(db.String(20), default='none')
+    notes = db.Column(db.Text)
 
 class Timetable(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1495,7 +1505,9 @@ def init_db():
                 credits=3,
                 department='Computer Science',
                 teacher_id=faculty1.id if faculty1 else None,
-                max_students=50
+                max_students=50,
+                semester='1',
+                description='Fundamental concepts of computer science and programming'
             )
             course2 = Course(
                 code='MATH101',
@@ -1503,7 +1515,9 @@ def init_db():
                 credits=4,
                 department='Mathematics',
                 teacher_id=faculty2.id if faculty2 else None,
-                max_students=40
+                max_students=40,
+                semester='1',
+                description='Introduction to differential and integral calculus'
             )
             db.session.add_all([course1, course2])
             db.session.commit()
@@ -1514,12 +1528,20 @@ def init_db():
                 room_number='101',
                 capacity=50,
                 building='Science Building',
+                room_type='lecture',
+                floor=1,
+                status='active',
+                facilities='Projector, Whiteboard, Air Conditioning',
                 equipment='Projector, Whiteboard'
             )
             classroom2 = Classroom(
                 room_number='205',
                 capacity=40,
                 building='Mathematics Building',
+                room_type='seminar',
+                floor=2,
+                status='active',
+                facilities='Smart Board, Computer, Whiteboard',
                 equipment='Smart Board, Computer'
             )
             db.session.add_all([classroom1, classroom2])
@@ -1528,16 +1550,16 @@ def init_db():
         if not TimeSlot.query.first():
             # Create sample time slots
             time_slots = [
-                TimeSlot(day='Monday', start_time='09:00', end_time='10:00'),
-                TimeSlot(day='Monday', start_time='10:00', end_time='11:00'),
-                TimeSlot(day='Tuesday', start_time='09:00', end_time='10:00'),
-                TimeSlot(day='Tuesday', start_time='10:00', end_time='11:00'),
-                TimeSlot(day='Wednesday', start_time='09:00', end_time='10:00'),
-                TimeSlot(day='Wednesday', start_time='10:00', end_time='11:00'),
-                TimeSlot(day='Thursday', start_time='09:00', end_time='10:00'),
-                TimeSlot(day='Thursday', start_time='10:00', end_time='11:00'),
-                TimeSlot(day='Friday', start_time='09:00', end_time='10:00'),
-                TimeSlot(day='Friday', start_time='10:00', end_time='11:00'),
+                TimeSlot(day='Monday', start_time='09:00', end_time='10:00', break_type='none'),
+                TimeSlot(day='Monday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Tuesday', start_time='09:00', end_time='10:00', break_type='none'),
+                TimeSlot(day='Tuesday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Wednesday', start_time='09:00', end_time='10:00', break_type='none'),
+                TimeSlot(day='Wednesday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Thursday', start_time='09:00', end_time='10:00', break_type='none'),
+                TimeSlot(day='Thursday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Friday', start_time='09:00', end_time='10:00', break_type='none'),
+                TimeSlot(day='Friday', start_time='10:00', end_time='11:00', break_type='short'),
             ]
             db.session.add_all(time_slots)
             db.session.commit()
