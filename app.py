@@ -599,12 +599,15 @@ def admin_edit_user(user_id):
     
     if request.method == 'POST':
         user.name = request.form['name']
+        user.username = request.form['username']
         user.email = request.form['email']
         user.role = request.form['role']
         user.department = request.form['department']
+        user.phone = request.form.get('phone', '')
+        user.address = request.form.get('address', '')
         
         # Only update password if provided
-        if request.form['password']:
+        if request.form.get('password'):
             user.password_hash = generate_password_hash(request.form['password'])
         
         db.session.commit()
@@ -642,11 +645,14 @@ def admin_edit_course(course_id):
     course = Course.query.get_or_404(course_id)
     
     if request.method == 'POST':
+        course.code = request.form['code']
         course.name = request.form['name']
         course.credits = int(request.form['credits'])
         course.department = request.form['department']
         course.teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
         course.max_students = int(request.form['max_students'])
+        course.semester = request.form.get('semester', '1')
+        course.description = request.form.get('description', '')
         
         db.session.commit()
         flash('Course updated successfully', 'success')
@@ -681,7 +687,11 @@ def admin_edit_classroom(classroom_id):
         classroom.room_number = request.form['room_number']
         classroom.capacity = int(request.form['capacity'])
         classroom.building = request.form['building']
-        classroom.equipment = request.form['equipment']
+        classroom.room_type = request.form.get('room_type', 'lecture')
+        classroom.floor = int(request.form.get('floor', 1))
+        classroom.status = request.form.get('status', 'active')
+        classroom.facilities = request.form.get('facilities', '')
+        classroom.equipment = request.form.get('equipment', '')
         
         db.session.commit()
         flash('Classroom updated successfully', 'success')
@@ -1598,6 +1608,73 @@ def init_db():
                 db.session.add(timetable2)
             
             db.session.commit()
+
+# Missing routes
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        
+        # Check if user already exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists', 'error')
+            return render_template('register.html')
+        
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered', 'error')
+            return render_template('register.html')
+        
+        # Create new user (default role is student)
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+            role='student',
+            name=username,
+            department='General'
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        flash('Registration successful! Please login.', 'success')
+        return redirect(url_for('login'))
+    
+    return render_template('register.html')
+
+@app.route('/api/courses')
+def api_courses():
+    courses = Course.query.all()
+    return jsonify([{
+        'id': course.id,
+        'code': course.code,
+        'name': course.name,
+        'credits': course.credits,
+        'department': course.department
+    } for course in courses])
+
+@app.route('/api/classrooms')
+def api_classrooms():
+    classrooms = Classroom.query.all()
+    return jsonify([{
+        'id': classroom.id,
+        'room_number': classroom.room_number,
+        'building': classroom.building,
+        'capacity': classroom.capacity,
+        'room_type': classroom.room_type
+    } for classroom in classrooms])
+
+@app.route('/api/time_slots')
+def api_time_slots():
+    time_slots = TimeSlot.query.all()
+    return jsonify([{
+        'id': time_slot.id,
+        'day': time_slot.day,
+        'start_time': time_slot.start_time,
+        'end_time': time_slot.end_time
+    } for time_slot in time_slots])
 
 if __name__ == '__main__':
     init_db()

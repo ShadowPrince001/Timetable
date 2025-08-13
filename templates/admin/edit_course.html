@@ -82,6 +82,18 @@
                         <textarea class="form-control" id="description" name="description" rows="4">{{ course.description or '' }}</textarea>
                     </div>
                     
+                    <div class="form-group mb-3">
+                        <label for="teacher_id" class="form-label">Teacher</label>
+                        <select class="form-control" id="teacher_id" name="teacher_id">
+                            <option value="">No Teacher Assigned</option>
+                            {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}" {% if course.teacher_id == teacher.id %}selected{% endif %}>
+                                    {{ teacher.name }} ({{ teacher.department }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
                     <div class="form-group d-flex justify-content-between">
                         <a href="{{ url_for('admin_courses') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-1"></i>Cancel

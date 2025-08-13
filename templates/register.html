@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Timetable & Attendance System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-6 col-md-8">
+            <div class="card shadow-lg border-0 rounded-lg mt-5">
+                <div class="card-header">
+                    <h3 class="text-center font-weight-light my-4">
+                        <i class="fas fa-user-plus text-primary me-2"></i>
+                        Create Account
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="form-floating mb-3">
+                            <input class="form-control" id="username" name="username" type="text" placeholder="Username" required />
+                            <label for="username">Username</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input class="form-control" id="email" name="email" type="email" placeholder="name@example.com" required />
+                            <label for="email">Email address</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input class="form-control" id="password" name="password" type="password" placeholder="Password" required />
+                            <label for="password">Password</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input class="form-control" id="confirm_password" name="confirm_password" type="password" placeholder="Confirm Password" required />
+                            <label for="confirm_password">Confirm Password</label>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
+                            <a class="small" href="{{ url_for('login') }}">Return to login</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus me-1"></i>
+                                Create Account
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center py-3">
+                    <div class="small">
+                        <a href="{{ url_for('login') }}">Have an account? Go to login</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelector('form').addEventListener('submit', function(e) {
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+    
+    if (password !== confirmPassword) {
+        e.preventDefault();
+        alert('Passwords do not match!');
+        return false;
+    }
+    
+    if (password.length < 6) {
+        e.preventDefault();
+        alert('Password must be at least 6 characters long!');
+        return false;
+    }
+});
+</script>
+{% endblock %}
