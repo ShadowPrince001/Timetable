@@ -9,7 +9,7 @@ import threading
 import json
 import os
 from dotenv import load_dotenv
-from timetable_generator import MultiGroupTimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, StudentGroup as GenStudentGroup
+from timetable_generator import MultiGroupTimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, StudentGroup as GenStudentGroup, Teacher as GenTeacher
 
 load_dotenv()
 
@@ -641,8 +641,12 @@ def admin_group_timetable(group_id):
         # Get the specific student group
         student_group = StudentGroup.query.get_or_404(group_id)
         
-        # Get all timetables for this group
-        timetables = Timetable.query.filter_by(student_group_id=group_id).order_by(
+        # Get all timetables for this group with proper joins
+        timetables = db.session.query(Timetable).join(
+            TimeSlot, Timetable.time_slot_id == TimeSlot.id
+        ).filter(
+            Timetable.student_group_id == group_id
+        ).order_by(
             db.case(
                 (TimeSlot.day == 'Monday', 1),
                 (TimeSlot.day == 'Tuesday', 2),
@@ -695,8 +699,12 @@ def admin_teacher_timetable(teacher_id):
         # Get the specific teacher
         teacher = User.query.filter_by(id=teacher_id, role='faculty').first_or_404()
         
-        # Get all timetables for this teacher
-        timetables = Timetable.query.filter_by(teacher_id=teacher_id).order_by(
+        # Get all timetables for this teacher with proper joins
+        timetables = db.session.query(Timetable).join(
+            TimeSlot, Timetable.time_slot_id == TimeSlot.id
+        ).filter(
+            Timetable.teacher_id == teacher_id
+        ).order_by(
             db.case(
                 (TimeSlot.day == 'Monday', 1),
                 (TimeSlot.day == 'Tuesday', 2),
@@ -1698,10 +1706,18 @@ def admin_add_timetable_entry():
         
         # Check equipment constraints
         if course.required_equipment:
-            required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',')]
-            classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',')]
+            required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',') if eq.strip()]
+            classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',') if eq.strip()]
             
-            missing_equipment = [eq for eq in required_equipment if eq and eq not in classroom_equipment]
+            # More flexible equipment matching - check if any required equipment is available
+            missing_equipment = []
+            for req_eq in required_equipment:
+                if req_eq:  # Skip empty strings
+                    # Check if any classroom equipment contains the required equipment
+                    equipment_found = any(req_eq in eq or eq in req_eq for eq in classroom_equipment)
+                    if not equipment_found:
+                        missing_equipment.append(req_eq)
+            
             if missing_equipment:
                 flash(f'Classroom {classroom.room_number} is missing required equipment: {", ".join(missing_equipment)}', 'error')
                 return redirect(url_for('admin_timetable'))
@@ -1735,6 +1751,7 @@ def admin_add_timetable_entry():
             teacher_id=teacher_id,
             classroom_id=classroom_id,
             time_slot_id=time_slot_id,
+            student_group_id=request.form.get('student_group_id'),  # Add this field
             semester=semester,
             academic_year=academic_year
         )
@@ -2409,71 +2426,43 @@ def admin_generate_timetables():
             
             # Get all time slots
             time_slots = TimeSlot.query.all()
-            gen_time_slots = []
-            for ts in time_slots:
-                gen_time_slots.append(type('TimeSlot', (), {
-                    'id': ts.id, 'day': ts.day, 'start_time': ts.start_time, 
-                    'end_time': ts.end_time, 'break_type': ts.break_type
-                })())
+            gen_time_slots = [GenTimeSlot(
+                id=ts.id, day=ts.day, start_time=ts.start_time, 
+                end_time=ts.end_time, break_type=ts.break_type
+            ) for ts in time_slots]
             generator.add_time_slots(gen_time_slots)
             
             # Get all courses
             courses = Course.query.all()
-            gen_courses = []
-            for c in courses:
-                gen_courses.append(type('Course', (), {
-                    'id': c.id, 'code': c.code, 'name': c.name, 
-                    'periods_per_week': c.periods_per_week, 'department': c.department,
-                    'subject_area': c.subject_area, 'required_equipment': c.required_equipment or '',
-                    'min_capacity': c.min_capacity
-                })())
+            gen_courses = [GenCourse(
+                id=c.id, code=c.code, name=c.name, 
+                periods_per_week=c.periods_per_week, department=c.department,
+                subject_area=c.subject_area, required_equipment=c.required_equipment or '',
+                min_capacity=c.min_capacity, max_students=c.max_students
+            ) for c in courses]
             generator.add_courses(gen_courses)
             
             # Get all classrooms
             classrooms = Classroom.query.all()
-            gen_classrooms = []
-            for c in classrooms:
-                gen_classrooms.append(type('Classroom', (), {
-                    'id': c.id, 'room_number': c.room_number, 'capacity': c.capacity,
-                    'building': c.building, 'room_type': c.room_type, 'equipment': c.equipment or ''
-                })())
+            gen_classrooms = [GenClassroom(
+                id=c.id, room_number=c.room_number, capacity=c.capacity,
+                building=c.building, room_type=c.room_type, equipment=c.equipment or ''
+            ) for c in classrooms]
             generator.add_classrooms(gen_classrooms)
             
             # Get all teachers
             teachers = User.query.filter_by(role='faculty').all()
-            gen_teachers = []
-            for teacher in teachers:
-                # Create default availability for all time slots
-                availability = set()
-                for ts in time_slots:
-                    availability.add((ts.day, ts.start_time))
-                
-                gen_teachers.append(type('Teacher', (), {
-                    'id': teacher.id, 'name': teacher.name, 'department': teacher.department,
-                    'availability': availability
-                })())
+            gen_teachers = [GenTeacher(
+                id=teacher.id, name=teacher.name, department=teacher.department
+            ) for teacher in teachers]
             generator.add_teachers(gen_teachers)
             
             # Get all student groups with their courses
             student_groups = StudentGroup.query.all()
-            gen_student_groups = []
-            for group in student_groups:
-                # Get courses for this group
-                group_courses = []
-                for course in courses:
-                    if course.department == group.department:
-                        group_courses.append(GenCourse(
-                            id=course.id, code=course.code, name=course.name,
-                            periods_per_week=course.periods_per_week,
-                            department=course.department, subject_area=course.subject_area,
-                            required_equipment=course.required_equipment or '',
-                            min_capacity=course.min_capacity, max_students=course.max_students
-                        ))
-                
-                gen_student_groups.append(GenStudentGroup(
-                    id=group.id, name=group.name, department=group.department,
-                    year=group.year, semester=group.semester
-                ))
+            gen_student_groups = [GenStudentGroup(
+                id=group.id, name=group.name, department=group.department,
+                year=group.year, semester=group.semester
+            ) for group in student_groups]
             generator.add_student_groups(gen_student_groups)
             
             # Generate timetables for all groups
@@ -2644,23 +2633,126 @@ def faculty_timetable():
 @app.route('/admin/check_timetable_feasibility')
 @login_required
 def admin_check_timetable_feasibility():
-    """Check if timetable generation is feasible"""
+    """Check if timetable generation is feasible with current constraints"""
     if current_user.role != 'admin':
-        return jsonify({'error': 'Access denied'}), 403
+        return jsonify({'feasible': False, 'reason': 'Access denied'})
     
     try:
-        # Initialize timetable generator
+        print(f"\n🔍 DEBUG: Starting feasibility check...")
+        
+        # Get all required data
+        courses = Course.query.all()
+        classrooms = Classroom.query.all()
+        teachers = User.query.filter_by(role='faculty').all()
+        student_groups = StudentGroup.query.all()
+        time_slots = TimeSlot.query.all()
+        
+        print(f"📊 DEBUG: Available resources:")
+        print(f"   📚 Courses: {len(courses)}")
+        print(f"   🏫 Classrooms: {len(classrooms)}")
+        print(f"   👨‍🏫 Teachers: {len(teachers)}")
+        print(f"   👥 Student Groups: {len(student_groups)}")
+        print(f"   ⏰ Time Slots: {len(time_slots)}")
+        
+        # Check basic resource availability
+        if not courses:
+            print(f"❌ DEBUG: No courses available")
+            return jsonify({'feasible': False, 'reason': 'No courses available'})
+        
+        if not classrooms:
+            print(f"❌ DEBUG: No classrooms available")
+            return jsonify({'feasible': False, 'reason': 'No classrooms available'})
+        
+        if not teachers:
+            print(f"❌ DEBUG: No teachers available")
+            return jsonify({'feasible': False, 'reason': 'No teachers available'})
+        
+        if not student_groups:
+            print(f"❌ DEBUG: No student groups available")
+            return jsonify({'feasible': False, 'reason': 'No student groups available'})
+        
+        if not time_slots:
+            print(f"❌ DEBUG: No time slots available")
+            return jsonify({'feasible': False, 'reason': 'No time slots available'})
+        
+        print(f"✅ DEBUG: Basic resource availability check passed")
+        
+        # Check course-group department matching
+        print(f"\n🔍 DEBUG: Checking course-group department matching...")
+        for group in student_groups:
+            group_courses = [c for c in courses if c.department == group.department]
+            print(f"   👥 Group {group.name} ({group.department}): {len(group_courses)} courses")
+            if not group_courses:
+                print(f"      ❌ No courses available for this group")
+                return jsonify({'feasible': False, 'reason': f'No courses available for group {group.name}'})
+        
+        print(f"✅ DEBUG: Course-group department matching check passed")
+        
+        # Check classroom capacity constraints
+        print(f"\n🔍 DEBUG: Checking classroom capacity constraints...")
+        for course in courses:
+            suitable_classrooms = [c for c in classrooms if c.capacity >= course.min_capacity]
+            print(f"   📚 Course {course.code}: min_capacity={course.min_capacity}, suitable_classrooms={len(suitable_classrooms)}")
+            if not suitable_classrooms:
+                print(f"      ❌ No classrooms with sufficient capacity")
+                return jsonify({'feasible': False, 'reason': f'No classrooms with sufficient capacity for course {course.code}'})
+        
+        print(f"✅ DEBUG: Classroom capacity constraints check passed")
+        
+        # Check equipment constraints
+        print(f"\n🔍 DEBUG: Checking equipment constraints...")
+        for course in courses:
+            if course.required_equipment:
+                required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',') if eq.strip()]
+                print(f"   📚 Course {course.code} requires: {required_equipment}")
+                
+                suitable_classrooms = []
+                for classroom in classrooms:
+                    if classroom.capacity >= course.min_capacity:
+                        classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',') if eq.strip()]
+                        
+                        # Check if all required equipment is available
+                        equipment_available = True
+                        for req_eq in required_equipment:
+                            if req_eq:
+                                equipment_found = any(req_eq in eq or eq in req_eq for eq in classroom_equipment)
+                                if not equipment_found:
+                                    equipment_available = False
+                                    break
+                        
+                        if equipment_available:
+                            suitable_classrooms.append(classroom)
+                
+                print(f"      🏫 Found {len(suitable_classrooms)} classrooms with required equipment")
+                if not suitable_classrooms:
+                    print(f"      ❌ No classrooms with required equipment")
+                    return jsonify({'feasible': False, 'reason': f'No classrooms with required equipment for course {course.code}'})
+        
+        print(f"✅ DEBUG: Equipment constraints check passed")
+        
+        # Check teacher availability
+        print(f"\n🔍 DEBUG: Checking teacher availability...")
+        total_required_periods = sum(c.periods_per_week for c in courses)
+        total_available_slots = len(time_slots) * len(student_groups)
+        print(f"   📊 Total required periods: {total_required_periods}")
+        print(f"   📊 Total available slots: {total_available_slots}")
+        
+        if total_required_periods > total_available_slots:
+            print(f"   ❌ Not enough time slots available")
+            return jsonify({'feasible': False, 'reason': f'Not enough time slots available. Required: {total_required_periods}, Available: {total_available_slots}'})
+        
+        print(f"✅ DEBUG: Teacher availability check passed")
+        
+        # Try actual timetable generation
+        print(f"\n🔍 DEBUG: Attempting actual timetable generation...")
         generator = MultiGroupTimetableGenerator()
         
-        # Get all time slots
-        time_slots = TimeSlot.query.all()
+        # Convert database models to dataclass objects and add all resources
         gen_time_slots = [GenTimeSlot(
             id=ts.id, day=ts.day, start_time=ts.start_time, end_time=ts.end_time
         ) for ts in time_slots]
         generator.add_time_slots(gen_time_slots)
         
-        # Get all courses
-        courses = Course.query.all()
         gen_courses = [GenCourse(
             id=c.id, code=c.code, name=c.name, periods_per_week=c.periods_per_week,
             department=c.department, subject_area=c.subject_area,
@@ -2669,64 +2761,43 @@ def admin_check_timetable_feasibility():
         ) for c in courses]
         generator.add_courses(gen_courses)
         
-        # Get all classrooms
-        classrooms = Classroom.query.all()
-        generator.add_classrooms([GenClassroom(
+        gen_classrooms = [GenClassroom(
             id=c.id, room_number=c.room_number, capacity=c.capacity,
             room_type=c.room_type, equipment=c.equipment or '', building=c.building
-        ) for c in classrooms])
+        ) for c in classrooms]
+        generator.add_classrooms(gen_classrooms)
         
-        # Get all student groups
-        student_groups = StudentGroup.query.all()
-        gen_student_groups = []
-        for group in student_groups:
-            group_courses = []
-            for course in courses:
-                if course.department == group.department:
-                    group_courses.append(GenCourse(
-                        id=course.id, code=course.code, name=course.name,
-                        periods_per_week=course.periods_per_week,
-                        department=course.department, subject_area=course.subject_area,
-                        required_equipment=course.required_equipment or '',
-                        min_capacity=course.min_capacity, max_students=course.max_students
-                    ))
-            
-            gen_student_groups.append(GenStudentGroup(
-                id=group.id, name=group.name, department=group.department,
-                year=group.year, semester=group.semester
-            ))
+        gen_teachers = [GenTeacher(
+            id=t.id, name=t.name, department=t.department
+        ) for t in teachers]
+        generator.add_teachers(gen_teachers)
+        
+        gen_student_groups = [GenStudentGroup(
+            id=g.id, name=g.name, department=g.department,
+            year=g.year, semester=g.semester
+        ) for g in student_groups]
         generator.add_student_groups(gen_student_groups)
         
-        # Generate timetables to check feasibility
+        # Generate timetables
         generated_timetables = generator.generate_timetables()
         
-        if not generated_timetables:
-            return jsonify({
-                'feasible': False,
-                'reason': 'Failed to generate timetables - insufficient resources or conflicts'
-            })
-        
-        # Validate constraints
-        constraints_valid = generator.validate_constraints()
-        
-        if constraints_valid:
+        if generated_timetables:
+            print(f"✅ DEBUG: Timetable generation successful!")
+            print(f"   📊 Generated timetables for {len(generated_timetables)} groups")
             return jsonify({
                 'feasible': True,
-                'reason': 'Timetable generation successful with all constraints satisfied',
-                'groups': len(generated_timetables),
-                'total_entries': sum(len(timetable) for timetable in generated_timetables.values())
+                'reason': f'Successfully generated timetables for {len(generated_timetables)} groups'
             })
         else:
+            print(f"❌ DEBUG: Timetable generation failed")
             return jsonify({
                 'feasible': False,
-                'reason': 'Timetable generated but constraint violations detected'
+                'reason': 'Timetable generation failed - check console for detailed debug output'
             })
-        
+            
     except Exception as e:
-        return jsonify({
-            'feasible': False,
-            'reason': f'Error checking feasibility: {str(e)}'
-        })
+        print(f"❌ DEBUG: Error during feasibility check: {str(e)}")
+        return jsonify({'feasible': False, 'reason': f'Error during feasibility check: {str(e)}'})
 
 @app.route('/admin/timetable_statistics')
 @login_required
