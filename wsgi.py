@@ -9,15 +9,22 @@ with app.app_context():
         init_db()
         print("✅ Database initialization completed")
         
-        # Import and run sync script for additional data consistency
+        # Optional: run sync script
         try:
             from sync_databases_flask import sync_database
             sync_database()
             print("✅ Database synchronization completed")
-        except ImportError:
-            print("ℹ️ Sync script not available, using init_db only")
         except Exception as e:
-            print(f"⚠️ Sync script failed: {e}, continuing with init_db only")
+            print(f"ℹ️ Sync script unavailable or failed ({e}); continuing")
+
+        # Optional: seed demo data if requested by env var
+        if os.getenv('SEED_DEMO', '0') == '1':
+            try:
+                from seed_demo_data import seed_demo_data
+                seed_demo_data()
+                print("✅ Demo data seeding completed")
+            except Exception as e:
+                print(f"⚠️ Demo data seeding failed: {e}")
             
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
