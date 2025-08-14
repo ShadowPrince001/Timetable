@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Timetable Statistics{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Timetable Statistics & Analytics
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <!-- Overview Cards -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title">{{ total_timetables }}</h3>
+                                    <p class="card-text">Total Entries</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title">{{ total_courses }}</h3>
+                                    <p class="card-text">Active Courses</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title">{{ total_students }}</h3>
+                                    <p class="card-text">Students</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-dark text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title">{{ total_faculty }}</h3>
+                                    <p class="card-text">Faculty</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Distribution by Day</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="dayChart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Classroom Utilization</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="classroomChart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Statistics -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Day-wise Breakdown</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Day</th>
+                                                    <th>Classes</th>
+                                                    <th>Percentage</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for day, count in day_distribution %}
+                                                <tr>
+                                                    <td>{{ day }}</td>
+                                                    <td>{{ count }}</td>
+                                                    <td>
+                                                        <div class="progress" style="height: 20px;">
+                                                            <div class="progress-bar" role="progressbar" 
+                                                                 style="width: {{ (count / total_timetables * 100) | round(1) }}%">
+                                                                {{ (count / total_timetables * 100) | round(1) }}%
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Classroom Usage</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Classroom</th>
+                                                    <th>Classes</th>
+                                                    <th>Utilization</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for room, count in classroom_utilization %}
+                                                <tr>
+                                                    <td>{{ room }}</td>
+                                                    <td>{{ count }}</td>
+                                                    <td>
+                                                        <div class="progress" style="height: 20px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" 
+                                                                 style="width: {{ (count / total_timetables * 100) | round(1) }}%">
+                                                                {{ (count / total_timetables * 100) | round(1) }}%
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('admin_generate_timetables') }}" class="btn btn-primary">
+                            <i class="fas fa-magic me-2"></i>Generate New Timetables
+                        </a>
+                        <a href="{{ url_for('admin_export_timetables') }}" class="btn btn-success ms-2">
+                            <i class="fas fa-download me-2"></i>Export to CSV
+                        </a>
+                        <a href="{{ url_for('admin_timetable') }}" class="btn btn-secondary ms-2">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Timetables
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Day Distribution Chart
+    const dayCtx = document.getElementById('dayChart').getContext('2d');
+    const dayChart = new Chart(dayCtx, {
+        type: 'bar',
+        data: {
+            labels: [{% for day, count in day_distribution %}'{{ day }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                label: 'Classes per Day',
+                data: [{% for day, count in day_distribution %}{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(153, 102, 255, 0.8)'
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+
+    // Classroom Utilization Chart
+    const classroomCtx = document.getElementById('classroomChart').getContext('2d');
+    const classroomChart = new Chart(classroomCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [{% for room, count in classroom_utilization %}'{{ room }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                data: [{% for room, count in classroom_utilization %}{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(153, 102, 255, 0.8)',
+                    'rgba(255, 159, 64, 0.8)'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

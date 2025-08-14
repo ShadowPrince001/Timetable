@@ -91,6 +91,19 @@
                         </div>
                     </div>
 
+                    <div class="row" id="groupSelectionRow" style="display: none;">
+                        <div class="col-md-6 mb-3">
+                            <label for="group_id" class="form-label">Student Group</label>
+                            <select class="form-select" id="group_id" name="group_id">
+                                <option value="">Choose group...</option>
+                                {% for group in student_groups %}
+                                <option value="{{ group.id }}">{{ group.name }} ({{ group.department }})</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Select a group for student users</small>
+                        </div>
+                    </div>
+
                     <div class="d-flex justify-content-between">
                         <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-1"></i>Back to Users
@@ -148,5 +161,22 @@
         });
     }, false);
 })();
+
+// Show/hide group selection based on role
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.getElementById('role');
+    const groupSelectionRow = document.getElementById('groupSelectionRow');
+    
+    function toggleGroupSelection() {
+        if (roleSelect.value === 'student') {
+            groupSelectionRow.style.display = 'block';
+        } else {
+            groupSelectionRow.style.display = 'none';
+        }
+    }
+    
+    roleSelect.addEventListener('change', toggleGroupSelection);
+    toggleGroupSelection(); // Initial state
+});
 </script>
 {% endblock %}

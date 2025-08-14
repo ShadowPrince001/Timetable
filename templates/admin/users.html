@@ -38,7 +38,7 @@
             <!-- Filter Section -->
             <div class="card-body border-bottom">
                 <form id="userFilterForm" method="GET" class="row g-3">
-                    <div class="col-md-2">
+                    <div class="col-md-4">
                         <label for="filter_role" class="form-label">Role</label>
                         <select class="form-control" id="filter_role" name="role">
                             <option value="">All Roles</option>
@@ -47,7 +47,7 @@
                             <option value="student">Student</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-4">
                         <label for="filter_department" class="form-label">Department</label>
                         <select class="form-control" id="filter_department" name="department">
                             <option value="">All Departments</option>
@@ -60,47 +60,13 @@
                             <option value="Administration">Administration</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label for="filter_created_date" class="form-label">Created Date</label>
-                        <select class="form-control" id="filter_created_date" name="created_date">
-                            <option value="">All Dates</option>
-                            <option value="today">Today</option>
-                            <option value="week">This Week</option>
-                            <option value="month">This Month</option>
-                            <option value="year">This Year</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_has_phone" class="form-label">Phone Status</label>
-                        <select class="form-control" id="filter_has_phone" name="has_phone">
-                            <option value="">All</option>
-                            <option value="yes">Has Phone</option>
-                            <option value="no">No Phone</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_has_address" class="form-label">Address Status</label>
-                        <select class="form-control" id="filter_has_address" name="has_address">
-                            <option value="">All</option>
-                            <option value="yes">Has Address</option>
-                            <option value="no">No Address</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_has_qualifications" class="form-label">Qualifications</label>
-                        <select class="form-control" id="filter_has_qualifications" name="has_qualifications">
-                            <option value="">All</option>
-                            <option value="yes">Has Qualifications</option>
-                            <option value="no">No Qualifications</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
+                    <div class="col-md-4 d-flex align-items-end">
                         <button type="submit" class="btn btn-outline-primary btn-sm me-2">
                             <i class="fas fa-filter me-1"></i>Apply Filters
                         </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearUserFilters()">
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary btn-sm me-2">
                             <i class="fas fa-times me-1"></i>Clear Filters
-                        </button>
+                        </a>
                         <button type="button" class="btn btn-outline-success btn-sm" onclick="exportUsers()">
                             <i class="fas fa-download me-1"></i>Export
                         </button>
@@ -121,6 +87,7 @@
                                 <th>Email</th>
                                 <th>Role</th>
                                 <th>Department</th>
+                                <th>Group</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -145,6 +112,13 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ user.department or 'N/A' }}</td>
+                                <td>
+                                    {% if user.role == 'student' and user.student_group %}
+                                        <span class="badge bg-info">{{ user.student_group.name }}</span>
+                                    {% else %}
+                                        <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                                 <td>
                                     <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Edit User">
@@ -362,6 +336,19 @@ document.addEventListener('DOMContentLoaded', function() {
     userCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', updateBulkActions);
     });
+    
+    // Set current filter values from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleFilter = document.getElementById('filter_role');
+    const departmentFilter = document.getElementById('filter_department');
+    
+    if (roleFilter && urlParams.get('role')) {
+        roleFilter.value = urlParams.get('role');
+    }
+    
+    if (departmentFilter && urlParams.get('department')) {
+        departmentFilter.value = urlParams.get('department');
+    }
 });
 </script>
 {% endblock %}

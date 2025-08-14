@@ -24,6 +24,46 @@
                     <i class="fas fa-plus me-1"></i>Add Course
                 </a>
             </div>
+            
+            <!-- Filter Section -->
+            <div class="card-body border-bottom">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="filter_department" class="form-label">Department</label>
+                        <select class="form-control" id="filter_department" name="department">
+                            <option value="">All Departments</option>
+                            <option value="Computer Science">Computer Science</option>
+                            <option value="Mathematics">Mathematics</option>
+                            <option value="Physics">Physics</option>
+                            <option value="Chemistry">Chemistry</option>
+                            <option value="English">English</option>
+                            <option value="Economics">Economics</option>
+                            <option value="Administration">Administration</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter_credits" class="form-label">Credits</label>
+                        <select class="form-control" id="filter_credits" name="credits">
+                            <option value="">All Credits</option>
+                            <option value="1">1 Credit</option>
+                            <option value="2">2 Credits</option>
+                            <option value="3">3 Credits</option>
+                            <option value="4">4 Credits</option>
+                            <option value="5">5 Credits</option>
+                            <option value="6">6 Credits</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="fas fa-filter me-1"></i>Apply Filters
+                        </button>
+                        <a href="{{ url_for('admin_courses') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-times me-1"></i>Clear Filters
+                        </a>
+                    </div>
+                </form>
+            </div>
+            
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-bordered" width="100%" cellspacing="0">
@@ -33,6 +73,7 @@
                                 <th>Name</th>
                                 <th>Department</th>
                                 <th>Credits</th>
+                                <th>Periods/Week</th>
                                 <th>Teacher</th>
                                 <th>Max Students</th>
                                 <th>Actions</th>
@@ -45,6 +86,7 @@
                                 <td>{{ course.name }}</td>
                                 <td>{{ course.department }}</td>
                                 <td>{{ course.credits }}</td>
+                                <td>{{ course.periods_per_week }}</td>
                                 <td>
                                     {% if course.teacher %}
                                         {{ course.teacher.name }}
@@ -153,4 +195,21 @@
         </div>
     </div>
 </div>
+
+<script>
+// Set current filter values from URL parameters when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const departmentFilter = document.getElementById('filter_department');
+    const creditsFilter = document.getElementById('filter_credits');
+    
+    if (departmentFilter && urlParams.get('department')) {
+        departmentFilter.value = urlParams.get('department');
+    }
+    
+    if (creditsFilter && urlParams.get('credits')) {
+        creditsFilter.value = urlParams.get('credits');
+    }
+});
+</script>
 {% endblock %}

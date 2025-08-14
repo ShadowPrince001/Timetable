@@ -24,6 +24,46 @@
                     <i class="fas fa-plus me-1"></i>Add Classroom
                 </a>
             </div>
+            
+            <!-- Filter Section -->
+            <div class="card-body border-bottom">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="filter_building" class="form-label">Building</label>
+                        <select class="form-control" id="filter_building" name="building">
+                            <option value="">All Buildings</option>
+                            <option value="Main Block">Main Block</option>
+                            <option value="Engineering Block">Engineering Block</option>
+                            <option value="Science Block">Science Block</option>
+                            <option value="Library Block">Library Block</option>
+                            <option value="Administrative Block">Administrative Block</option>
+                            <option value="Hostel Block">Hostel Block</option>
+                            <option value="Sports Complex">Sports Complex</option>
+                            <option value="Auditorium">Auditorium</option>
+                            <option value="Laboratory Block">Laboratory Block</option>
+                            <option value="Computer Center">Computer Center</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter_capacity" class="form-label">Capacity</label>
+                        <select class="form-control" id="filter_capacity" name="capacity">
+                            <option value="">All Capacities</option>
+                            <option value="small">Small (≤30 students)</option>
+                            <option value="medium">Medium (31-100 students)</option>
+                            <option value="large">Large (>100 students)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="fas fa-filter me-1"></i>Apply Filters
+                        </button>
+                        <a href="{{ url_for('admin_classrooms') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-times me-1"></i>Clear Filters
+                        </a>
+                    </div>
+                </form>
+            </div>
+            
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-bordered" width="100%" cellspacing="0">
@@ -153,4 +193,21 @@
         </div>
     </div>
 </div>
+
+<script>
+// Set current filter values from URL parameters when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const buildingFilter = document.getElementById('filter_building');
+    const capacityFilter = document.getElementById('filter_capacity');
+    
+    if (buildingFilter && urlParams.get('building')) {
+        buildingFilter.value = urlParams.get('building');
+    }
+    
+    if (capacityFilter && urlParams.get('capacity')) {
+        capacityFilter.value = urlParams.get('capacity');
+    }
+});
+</script>
 {% endblock %}

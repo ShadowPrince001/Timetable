@@ -39,7 +39,11 @@
                             <li><a class="dropdown-item" href="{{ url_for('admin_courses') }}">Manage Courses</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin_classrooms') }}">Manage Classrooms</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin_time_slots') }}">Manage Time Slots</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin_student_groups') }}">Manage Groups</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin_timetable') }}">Manage Timetable</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin_generate_timetables') }}">Generate Timetables</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin_timetable_statistics') }}">View Statistics</a></li>
                         </ul>
                     </li>
                     {% endif %}
@@ -53,25 +57,24 @@
                             <li><a class="dropdown-item" href="{{ url_for('faculty_dashboard') }}">Dashboard</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('faculty_dashboard') }}">My Courses</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('faculty_dashboard') }}">Take Attendance</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('faculty_my_timetable') }}">My Timetable</a></li>
                         </ul>
                     </li>
                     {% endif %}
                     
                     {% if current_user.role == 'student' %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('student_timetable') }}">
-                            <i class="fas fa-calendar me-1"></i>My Timetable
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="studentDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-graduate me-1"></i>Student
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('student_attendance_history') }}">
-                            <i class="fas fa-chart-bar me-1"></i>My Attendance
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('student_attendance_alerts') }}">
-                            <i class="fas fa-exclamation-triangle me-1"></i>Alerts
-                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('student_my_timetable') }}">My Timetable</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('student_attendance_history') }}">My Attendance</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('student_attendance_alerts') }}">Alerts</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('student_profile') }}">My Profile</a></li>
+                        </ul>
                     </li>
                     {% endif %}
                 </ul>

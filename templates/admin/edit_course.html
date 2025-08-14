@@ -92,6 +92,15 @@
                         </div>
                     </div>
 
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="periods_per_week" class="form-label">Periods per Week</label>
+                                <input type="number" class="form-control" id="periods_per_week" name="periods_per_week" value="{{ course.periods_per_week or 3 }}" min="1" max="10">
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-group mb-3">
                         <label for="required_equipment" class="form-label">Required Equipment</label>
                         <input type="text" class="form-control" id="required_equipment" name="required_equipment" value="{{ course.required_equipment or '' }}">

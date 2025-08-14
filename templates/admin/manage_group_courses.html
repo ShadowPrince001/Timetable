@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Group Courses - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-book text-primary me-2"></i>
+            Manage Group Courses
+        </h1>
+        <p class="text-muted">Assign courses to student group: <strong>{{ group.name }}</strong></p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-book me-2"></i>Course Assignment
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <p class="text-muted">
+                            Select the courses that students in <strong>{{ group.name }}</strong> will study. 
+                            All students in this group will be automatically enrolled in the selected courses.
+                        </p>
+                    </div>
+                    
+                    <div class="row">
+                        {% for course in all_courses %}
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="courses" value="{{ course.id }}" 
+                                       id="course_{{ course.id }}" 
+                                       {% if course.id in current_course_ids %}checked{% endif %}>
+                                <label class="form-check-label" for="course_{{ course.id }}">
+                                    <strong>{{ course.code }}</strong> - {{ course.name }}
+                                    <br>
+                                    <small class="text-muted">
+                                        {{ course.credits }} credits • {{ course.periods_per_week }} periods/week • {{ course.department }}
+                                    </small>
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin_student_groups') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Groups
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Update Course Assignment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-info-circle me-2"></i>Group Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Group Name:</strong><br>
+                    <span class="text-muted">{{ group.name }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Department:</strong><br>
+                    <span class="text-muted">{{ group.department }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Year:</strong> {{ group.year }}
+                </div>
+                <div class="mb-3">
+                    <strong>Semester:</strong> {{ group.semester }}
+                </div>
+                <div class="mb-3">
+                    <strong>Current Students:</strong> {{ group.students|length }}
+                </div>
+                <div class="mb-3">
+                    <strong>Current Courses:</strong> {{ group.courses|length }}
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> 
+                    <ul class="mb-0 mt-2">
+                        <li>Students in this group will study all selected courses</li>
+                        <li>Course assignments affect timetables and attendance</li>
+                        <li>Changes will apply to all current and future students in this group</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow mt-3">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-users me-2"></i>Group Students
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if group.students %}
+                <div class="list-group list-group-flush">
+                    {% for student in group.students %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ student.name }}</strong><br>
+                            <small class="text-muted">{{ student.username }}</small>
+                        </div>
+                        <span class="badge bg-primary rounded-pill">Student</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center">No students assigned to this group yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
