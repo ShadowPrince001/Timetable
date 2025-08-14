@@ -1919,7 +1919,11 @@ def init_db():
                 email='admin@institution.com',
                 password_hash=generate_password_hash('admin123'),
                 role='admin',
-                name='System Administrator'
+                name='System Administrator',
+                department='IT',
+                phone='+91-9876543210',
+                address='Main Campus, IT Department',
+                qualifications='M.Tech, PhD in Computer Science'
             )
             db.session.add(admin)
             db.session.commit()
@@ -1928,12 +1932,15 @@ def init_db():
         if not User.query.filter_by(role='faculty').first():
             # Create sample faculty
             faculty1 = User(
-                username='faculty1',
-                email='faculty1@institution.com',
+                username='faculty',
+                email='faculty@institution.com',
                 password_hash=generate_password_hash('faculty123'),
                 role='faculty',
                 name='Dr. John Smith',
-                department='Computer Science'
+                department='Computer Science',
+                phone='+91-9876543211',
+                address='Computer Science Department, Room 201',
+                qualifications='PhD in Computer Science, 10 years experience'
             )
             faculty2 = User(
                 username='faculty2',
@@ -1941,7 +1948,10 @@ def init_db():
                 password_hash=generate_password_hash('faculty123'),
                 role='faculty',
                 name='Prof. Jane Doe',
-                department='Mathematics'
+                department='Mathematics',
+                phone='+91-9876543212',
+                address='Mathematics Department, Room 105',
+                qualifications='PhD in Mathematics, 8 years experience'
             )
             db.session.add_all([faculty1, faculty2])
             db.session.commit()
@@ -1975,13 +1985,16 @@ def init_db():
             group2 = StudentGroup.query.filter_by(name='MATH-2024-1').first()
             
             student1 = User(
-                username='student1',
-                email='student1@institution.com',
+                username='student',
+                email='student@institution.com',
                 password_hash=generate_password_hash('student123'),
                 role='student',
                 name='Alice Johnson',
                 department='Computer Science',
-                group_id=group1.id if group1 else None
+                group_id=group1.id if group1 else None,
+                phone='+91-9876543213',
+                address='Student Hostel Block A, Room 101',
+                qualifications='12th Standard, Computer Science Stream'
             )
             student2 = User(
                 username='student2',
@@ -1990,7 +2003,10 @@ def init_db():
                 role='student',
                 name='Bob Wilson',
                 department='Computer Science',
-                group_id=group1.id if group1 else None
+                group_id=group1.id if group1 else None,
+                phone='+91-9876543214',
+                address='Student Hostel Block A, Room 102',
+                qualifications='12th Standard, Computer Science Stream'
             )
             db.session.add_all([student1, student2])
             db.session.commit()
