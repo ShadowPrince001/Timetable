@@ -2205,6 +2205,29 @@ def api_time_slots():
     } for time_slot in time_slots])
 
 # Automatic Timetable Generation Routes
+@app.route('/admin/clear_timetables', methods=['POST'])
+@login_required
+def admin_clear_timetables():
+    """Clear all existing timetables"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    try:
+        existing_count = Timetable.query.count()
+        if existing_count > 0:
+            Timetable.query.delete()
+            db.session.commit()
+            flash(f'🗑️ Successfully cleared {existing_count} existing timetables', 'success')
+        else:
+            flash('ℹ️ No existing timetables to clear', 'info')
+        
+        return redirect(url_for('admin_generate_timetables'))
+        
+    except Exception as e:
+        flash(f'Error clearing timetables: {str(e)}', 'error')
+        return redirect(url_for('admin_generate_timetables'))
+
 @app.route('/admin/generate_timetables', methods=['GET', 'POST'])
 @login_required
 def admin_generate_timetables():
@@ -2287,6 +2310,7 @@ def admin_generate_timetables():
                 return redirect(url_for('admin_generate_timetables'))
             
             # Generate timetables
+            print("🔄 Starting timetable generation...")
             generated_timetables = generator.generate_timetables()
             
             # Check if generation was successful
@@ -2294,44 +2318,55 @@ def admin_generate_timetables():
                 flash('❌ No timetables could be generated. The system may be over-constrained.', 'error')
                 return redirect(url_for('admin_generate_timetables'))
             
-            # Check for conflicts before saving
-            conflicts_found = []
-            for group_id, entries in generated_timetables.items():
-                for entry in entries:
-                    # Check for classroom conflicts
-                    existing_classroom = Timetable.query.filter_by(
-                        classroom_id=entry.classroom_id,
-                        time_slot_id=entry.time_slot_id,
-                        semester='Fall 2024',
-                        academic_year='2024-25'
-                    ).first()
-                    
-                    if existing_classroom:
-                        conflicts_found.append(f"Classroom {entry.classroom_number} already booked at {entry.day} {entry.start_time}")
-                        continue
-                    
-                    # Check for teacher conflicts
-                    existing_teacher = Timetable.query.filter_by(
-                        teacher_id=entry.teacher_id,
-                        time_slot_id=entry.time_slot_id,
-                        semester='Fall 2024',
-                        academic_year='2024-25'
-                    ).first()
-                    
-                    if existing_teacher:
-                        conflicts_found.append(f"Teacher {entry.teacher_name} already booked at {entry.day} {entry.start_time}")
-                        continue
-            
-            if conflicts_found:
-                flash(f'❌ Cannot generate conflict-free timetables. {len(conflicts_found)} conflicts found. Please adjust constraints.', 'error')
-                for conflict in conflicts_found[:5]:  # Show first 5 conflicts
-                    flash(f'⚠️ {conflict}', 'warning')
-                return redirect(url_for('admin_generate_timetables'))
+            print(f"✅ Generated {len(generated_timetables)} group timetables")
             
             # Save generated timetables to database
-            # First, clear existing timetables
-            Timetable.query.delete()
-            db.session.commit()
+            # Check if user wants to clear existing timetables
+            clear_existing = request.form.get('clear_existing') == 'on'
+            
+            if clear_existing:
+                existing_count = Timetable.query.count()
+                if existing_count > 0:
+                    print(f"🗑️ Clearing {existing_count} existing timetables...")
+                    Timetable.query.delete()
+                    db.session.commit()
+                    print("✅ Existing timetables cleared")
+            else:
+                print("ℹ️ Keeping existing timetables (clear_existing not checked)")
+            
+            # Now check for internal conflicts within the generated timetables
+            conflicts_found = []
+            global_classroom_usage = {}  # (day, time) -> classroom_id
+            global_teacher_usage = {}    # (day, time) -> teacher_id
+            
+            for group_id, entries in generated_timetables.items():
+                for entry in entries:
+                    slot_key = (entry.day, entry.start_time)
+                    
+                    # Check for classroom conflicts within generated data
+                    if slot_key in global_classroom_usage:
+                        conflicts_found.append(f"Classroom {entry.classroom_number} double-booked at {entry.day} {entry.start_time}")
+                        continue
+                    
+                    # Check for teacher conflicts within generated data
+                    if slot_key in global_teacher_usage:
+                        conflicts_found.append(f"Teacher {entry.teacher_name} double-booked at {entry.day} {entry.start_time}")
+                        continue
+                    
+                    # Mark as used
+                    global_classroom_usage[slot_key] = entry.classroom_id
+                    global_teacher_usage[slot_key] = entry.teacher_id
+            
+            if conflicts_found:
+                print(f"❌ Found {len(conflicts_found)} conflicts in generated timetables")
+                for conflict in conflicts_found[:5]:
+                    print(f"⚠️ {conflict}")
+                
+                # Try to regenerate with stricter constraints
+                flash(f'❌ Generated timetables have {len(conflicts_found)} internal conflicts. Please try again or adjust constraints.', 'error')
+                return redirect(url_for('admin_generate_timetables'))
+            
+            print("✅ No conflicts detected in generated timetables")
             
             # Add new timetables
             timetables_added = 0
@@ -2354,8 +2389,11 @@ def admin_generate_timetables():
                         )
                         db.session.add(timetable)
                         timetables_added += 1
+                    else:
+                        print(f"⚠️ Missing data for entry: course={entry.course_id}, teacher={entry.teacher_id}, classroom={entry.classroom_id}, time_slot={entry.time_slot_id}")
             
             db.session.commit()
+            print(f"✅ Saved {timetables_added} timetable entries to database")
             
             # Get statistics
             stats = generator.get_statistics()
@@ -2376,6 +2414,7 @@ def admin_generate_timetables():
                          courses=Course.query.all(),
                          teachers=User.query.filter_by(role='faculty').all(),
                          classrooms=Classroom.query.all(),
+                         existing_timetables=Timetable.query.all(),
                          expected_periods=sum(c.periods_per_week for c in Course.query.all()))
 
 @app.route('/admin/check_timetable_feasibility')
