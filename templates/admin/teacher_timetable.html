@@ -68,23 +68,25 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for time_slot in time_slots %}
+                                {% for time_range in time_slots %}
+                                {% set time_parts = time_range.split(' - ') %}
+                                {% set start_time = time_parts[0] %}
+                                {% set end_time = time_parts[1] %}
                                 <tr>
                                     <td class="bg-light">
-                                        <strong>{{ time_slot.start_time }} - {{ time_slot.end_time }}</strong>
+                                        <strong>{{ time_range }}</strong>
                                     </td>
                                     {% for day in days %}
                                     <td class="text-center" style="height: 80px; vertical-align: middle;">
-                                        {% for timetable in timetables %}
-                                            {% if timetable.time_slot.day == day and timetable.time_slot.start_time == time_slot.start_time %}
-                                                <div class="p-2 bg-success text-white rounded">
-                                                    <div class="fw-bold">{{ timetable.course.code }}</div>
-                                                    <small>{{ timetable.course.name }}</small><br>
-                                                    <small><i class="fas fa-users me-1"></i>{{ timetable.student_group.name }}</small><br>
-                                                    <small><i class="fas fa-door-open me-1"></i>{{ timetable.classroom.room_number }}</small>
-                                                </div>
-                                            {% endif %}
-                                        {% endfor %}
+                                        {% set timetable_entry = timetables | selectattr("time_slot.day", "equalto", day) | selectattr("time_slot.start_time", "equalto", start_time) | first %}
+                                        {% if timetable_entry %}
+                                            <div class="p-2 bg-success text-white rounded">
+                                                <div class="fw-bold">{{ timetable_entry.course.name }}</div>
+                                                <small>{{ timetable_entry.course.code }}</small><br>
+                                                <small><i class="fas fa-users me-1"></i>{{ timetable_entry.student_group.name }}</small><br>
+                                                <small><i class="fas fa-door-open me-1"></i>{{ timetable_entry.classroom.room_number }}</small>
+                                            </div>
+                                        {% endif %}
                                     </td>
                                     {% endfor %}
                                 </tr>

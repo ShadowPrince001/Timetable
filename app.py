@@ -641,21 +641,12 @@ def admin_group_timetable(group_id):
         # Get the specific student group
         student_group = StudentGroup.query.get_or_404(group_id)
         
-        # Get all timetables for this group with proper joins
-        timetables = db.session.query(Timetable).join(
-            TimeSlot, Timetable.time_slot_id == TimeSlot.id
-        ).filter(
+        # Get all timetables for this group with proper joins and ensure uniqueness
+        # Use a more specific query to avoid duplicates from JOIN operations
+        timetables = db.session.query(Timetable).filter(
             Timetable.student_group_id == group_id
         ).order_by(
-            db.case(
-                (TimeSlot.day == 'Monday', 1),
-                (TimeSlot.day == 'Tuesday', 2),
-                (TimeSlot.day == 'Wednesday', 3),
-                (TimeSlot.day == 'Thursday', 4),
-                (TimeSlot.day == 'Friday', 5),
-                else_=6
-            ),
-            TimeSlot.start_time
+            Timetable.time_slot_id
         ).all()
         
         # Ensure all relationships are loaded
@@ -671,14 +662,34 @@ def admin_group_timetable(group_id):
             if not hasattr(tt, 'student_group') or not tt.student_group:
                 tt.student_group = StudentGroup.query.get(tt.student_group_id)
         
-        # Get all available time slots for the grid view
-        time_slots = TimeSlot.query.order_by(TimeSlot.start_time).all()
+        # Create a unique timetable map to prevent duplicates in the grid
+        # Key: (day, start_time), Value: first timetable entry for that slot
+        unique_timetables = {}
+        for tt in timetables:
+            if tt.time_slot and tt.course and tt.classroom and tt.teacher:
+                key = (tt.time_slot.day, tt.time_slot.start_time)
+                if key not in unique_timetables:
+                    unique_timetables[key] = tt
+        
+        # Convert back to list for template rendering
+        unique_timetables_list = list(unique_timetables.values())
+        
+        # Get unique time ranges for the grid rows (not individual day-specific slots)
+        # We need to group by start_time and end_time to get unique time periods
+        unique_time_ranges = db.session.query(
+            TimeSlot.start_time,
+            TimeSlot.end_time
+        ).distinct().order_by(TimeSlot.start_time).all()
+        
+        # Convert to a list of time range strings for the template
+        # Since start_time and end_time are stored as strings in HH:MM format, we can use them directly
+        time_slots = [f"{start} - {end}" for start, end in unique_time_ranges]
         
         # Get all days
         days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
         
         return render_template('admin/group_timetable.html',
-                             timetables=timetables,
+                             timetables=unique_timetables_list,
                              student_group=student_group,
                              time_slots=time_slots,
                              days=days)
@@ -699,21 +710,12 @@ def admin_teacher_timetable(teacher_id):
         # Get the specific teacher
         teacher = User.query.filter_by(id=teacher_id, role='faculty').first_or_404()
         
-        # Get all timetables for this teacher with proper joins
-        timetables = db.session.query(Timetable).join(
-            TimeSlot, Timetable.time_slot_id == TimeSlot.id
-        ).filter(
+        # Get all timetables for this teacher with proper joins and ensure uniqueness
+        # Use a more specific query to avoid duplicates from JOIN operations
+        timetables = db.session.query(Timetable).filter(
             Timetable.teacher_id == teacher_id
         ).order_by(
-            db.case(
-                (TimeSlot.day == 'Monday', 1),
-                (TimeSlot.day == 'Tuesday', 2),
-                (TimeSlot.day == 'Wednesday', 3),
-                (TimeSlot.day == 'Thursday', 4),
-                (TimeSlot.day == 'Friday', 5),
-                else_=6
-            ),
-            TimeSlot.start_time
+            Timetable.time_slot_id
         ).all()
         
         # Ensure all relationships are loaded
@@ -727,14 +729,34 @@ def admin_teacher_timetable(teacher_id):
             if not hasattr(tt, 'student_group') or not tt.student_group:
                 tt.student_group = StudentGroup.query.get(tt.student_group_id)
         
-        # Get all available time slots for the grid view
-        time_slots = TimeSlot.query.order_by(TimeSlot.start_time).all()
+        # Create a unique timetable map to prevent duplicates in the grid
+        # Key: (day, start_time), Value: first timetable entry for that slot
+        unique_timetables = {}
+        for tt in timetables:
+            if tt.time_slot and tt.course and tt.classroom and tt.student_group:
+                key = (tt.time_slot.day, tt.time_slot.start_time)
+                if key not in unique_timetables:
+                    unique_timetables[key] = tt
+        
+        # Convert back to list for template rendering
+        unique_timetables_list = list(unique_timetables.values())
+        
+        # Get unique time ranges for the grid rows (not individual day-specific slots)
+        # We need to group by start_time and end_time to get unique time periods
+        unique_time_ranges = db.session.query(
+            TimeSlot.start_time,
+            TimeSlot.end_time
+        ).distinct().order_by(TimeSlot.start_time).all()
+        
+        # Convert to a list of time range strings for the template
+        # Since start_time and end_time are stored as strings in HH:MM format, we can use them directly
+        time_slots = [f"{start} - {end}" for start, end in unique_time_ranges]
         
         # Get all days
         days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
         
         return render_template('admin/teacher_timetable.html',
-                             timetables=timetables,
+                             timetables=unique_timetables_list,
                              teacher=teacher,
                              time_slots=time_slots,
                              days=days)
