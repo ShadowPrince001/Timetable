@@ -90,7 +90,7 @@
                             <div class="card bg-success text-white text-center">
                                 <div class="card-body">
                                     <h4 class="card-title">
-                                        {% set total_classes = timetable_by_day.values() | sum(attribute='length') %}
+                                        {% set total_classes = timetable_by_day.values() | map('length') | sum %}
                                         {{ total_classes }}
                                     </h4>
                                     <p class="card-text">Total Classes This Week</p>
@@ -101,7 +101,7 @@
                             <div class="card bg-primary text-white text-center">
                                 <div class="card-body">
                                     <h4 class="card-title">
-                                        {% set busy_days = timetable_by_day.values() | selectattr('length', '>', 0) | list | length %}
+                                        {% set busy_days = timetable_by_day.values() | map('length') | select('gt', 0) | list | length %}
                                         {{ busy_days }}
                                     </h4>
                                     <p class="card-text">School Days</p>
@@ -241,17 +241,18 @@ function exportMyTimetable() {
     // Create CSV content
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "Day,Time,Course,Teacher,Classroom,Building\n";
-    
+
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    // Assign as a string, then parse
+    const classes = JSON.parse('{{ timetable_by_day | tojson | safe }}');
     days.forEach(day => {
-        const classes = {{ timetable_by_day | tojson }};
         if (classes[day] && classes[day].length > 0) {
             classes[day].forEach(cls => {
                 csvContent += `${day},${cls.time},${cls.course},${cls.teacher},${cls.classroom},${cls.building}\n`;
             });
         }
     });
-    
+
     // Download CSV
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");

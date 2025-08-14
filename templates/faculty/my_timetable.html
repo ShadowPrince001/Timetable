@@ -85,7 +85,7 @@
                             <div class="card bg-primary text-white text-center">
                                 <div class="card-body">
                                     <h4 class="card-title">
-                                        {% set total_classes = timetable_by_day.values() | sum(attribute='length') %}
+                                        {% set total_classes = timetable_by_day.values() | map('length') | sum %}
                                         {{ total_classes }}
                                     </h4>
                                     <p class="card-text">Total Classes This Week</p>
@@ -96,7 +96,7 @@
                             <div class="card bg-success text-white text-center">
                                 <div class="card-body">
                                     <h4 class="card-title">
-                                        {% set busy_days = timetable_by_day.values() | selectattr('length', '>', 0) | list | length %}
+                                        {% set busy_days = timetable_by_day.values() | map('length') | select('gt', 0) | list | length %}
                                         {{ busy_days }}
                                     </h4>
                                     <p class="card-text">Teaching Days</p>
