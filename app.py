@@ -64,6 +64,24 @@ class Course(db.Model):
         db.CheckConstraint('max_students >= 1 AND max_students <= 200', name='check_max_students'),
         db.CheckConstraint('min_capacity >= 1', name='check_min_capacity'),
     )
+    
+    @property
+    def teacher(self):
+        """Get the primary teacher assigned to this course"""
+        primary_teacher = CourseTeacher.query.filter_by(
+            course_id=self.id, 
+            is_primary=True
+        ).first()
+        return primary_teacher.teacher if primary_teacher else None
+    
+    @property
+    def teacher_id(self):
+        """Get the primary teacher ID assigned to this course"""
+        primary_teacher = CourseTeacher.query.filter_by(
+            course_id=self.id, 
+            is_primary=True
+        ).first()
+        return primary_teacher.teacher_id if primary_teacher else None
 
 # New model for course-teacher assignments (many-to-many)
 class CourseTeacher(db.Model):
@@ -834,19 +852,19 @@ def admin_add_course():
             flash('Course code already exists', 'error')
             return redirect(url_for('admin_add_course'))
         
-            course = Course(
-                code=code,
-                name=name,
-                credits=credits,
-                department=department,
-                max_students=max_students,
-                semester=semester,
-                description=description,
-                subject_area=subject_area,
-                required_equipment=required_equipment,
-                min_capacity=min_capacity,
-                periods_per_week=periods_per_week
-            )
+        course = Course(
+            code=code,
+            name=name,
+            credits=credits,
+            department=department,
+            max_students=max_students,
+            semester=semester,
+            description=description,
+            subject_area=subject_area,
+            required_equipment=required_equipment,
+            min_capacity=min_capacity,
+            periods_per_week=periods_per_week
+        )
         db.session.add(course)
         db.session.flush()  # Get the course ID
         
