@@ -29,6 +29,88 @@
                     </button>
                 </div>
             </div>
+            
+            <!-- Filter Section -->
+            <div class="card-body border-bottom">
+                <form id="filterForm" method="GET" class="row g-3">
+                    <div class="col-md-2">
+                        <label for="filter_day" class="form-label">Day</label>
+                        <select class="form-control" id="filter_day" name="day">
+                            <option value="">All Days</option>
+                            <option value="Monday">Monday</option>
+                            <option value="Tuesday">Tuesday</option>
+                            <option value="Wednesday">Wednesday</option>
+                            <option value="Thursday">Thursday</option>
+                            <option value="Friday">Friday</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_course" class="form-label">Course</label>
+                        <select class="form-control" id="filter_course" name="course">
+                            <option value="">All Courses</option>
+                            {% for course in courses %}
+                            <option value="{{ course.id }}">{{ course.code }} - {{ course.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_teacher" class="form-label">Teacher</label>
+                        <select class="form-control" id="filter_teacher" name="teacher">
+                            <option value="">All Teachers</option>
+                            {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_classroom" class="form-label">Classroom</label>
+                        <select class="form-control" id="filter_classroom" name="classroom">
+                            <option value="">All Classrooms</option>
+                            {% for classroom in classrooms %}
+                            <option value="{{ classroom.id }}">{{ classroom.room_number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_semester" class="form-label">Semester</label>
+                        <select class="form-control" id="filter_semester" name="semester">
+                            <option value="">All Semesters</option>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option>
+                            <option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option>
+                            <option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option>
+                            <option value="8">Semester 8</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_time" class="form-label">Time Slot</label>
+                        <select class="form-control" id="filter_time" name="time_slot">
+                            <option value="">All Times</option>
+                            <option value="09:00-10:00">09:00-10:00</option>
+                            <option value="10:00-11:00">10:00-11:00</option>
+                            <option value="11:15-12:15">11:15-12:15</option>
+                            <option value="12:15-13:15">12:15-13:15</option>
+                            <option value="14:00-15:00">14:00-15:00</option>
+                            <option value="15:00-16:00">15:00-16:00</option>
+                            <option value="16:00-17:00">16:00-17:00</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="fas fa-filter me-1"></i>Apply Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFilters()">
+                            <i class="fas fa-times me-1"></i>Clear Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="exportTimetable()">
+                            <i class="fas fa-download me-1"></i>Export
+                        </button>
+                    </div>
+                </form>
+            </div>
             <div class="card-body">
                 {% if timetables %}
                 <div class="table-responsive">
@@ -54,7 +136,10 @@
                                     <strong>{{ timetable.course.code }}</strong><br>
                                     <small class="text-muted">{{ timetable.course.name }}</small>
                                 </td>
-                                <td>{{ timetable.teacher.name }}</td>
+                                <td>
+                                    {{ timetable.teacher.name }}<br>
+                                    <small class="text-muted">({{ timetable.teacher.name.split()[-1][0] }}{{ timetable.teacher.name.split()[0][0] }})</small>
+                                </td>
                                 <td>
                                     {{ timetable.classroom.room_number }}<br>
                                     <small class="text-muted">{{ timetable.classroom.building }}</small>
@@ -119,14 +204,15 @@
                                 <td class="bg-light"><strong>{{ time }}</strong></td>
                                 {% for day in days %}
                                 <td>
-                                    {% for timetable in timetables %}
-                                        {% if timetable.time_slot.day == day and (timetable.time_slot.start_time + '-' + timetable.time_slot.end_time) == time %}
-                                            <div class="text-center p-2 bg-info text-white rounded">
-                                                <small><strong>{{ timetable.course.code }}</strong></small><br>
-                                                <small>{{ timetable.classroom.room_number }}</small>
-                                            </div>
-                                        {% endif %}
-                                    {% endfor %}
+                                                                    {% for timetable in timetables %}
+                                    {% if timetable.time_slot.day == day and (timetable.time_slot.start_time + '-' + timetable.time_slot.end_time) == time %}
+                                        <div class="text-center p-2 bg-info text-white rounded">
+                                            <small><strong>{{ timetable.course.code }}</strong></small><br>
+                                            <small>{{ timetable.classroom.room_number }}</small><br>
+                                            <small>({{ timetable.teacher.name.split()[-1][0] }}{{ timetable.teacher.name.split()[0][0] }})</small>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
                                 </td>
                                 {% endfor %}
                             </tr>
@@ -292,6 +378,50 @@ function editTimetable(id) {
     // Redirect to edit page (to be implemented)
     window.location.href = `/admin/edit_timetable/${id}`;
 }
+
+function clearFilters() {
+    document.getElementById('filter_day').value = '';
+    document.getElementById('filter_course').value = '';
+    document.getElementById('filter_teacher').value = '';
+    document.getElementById('filter_classroom').value = '';
+    document.getElementById('filter_semester').value = '';
+    document.getElementById('filter_time').value = '';
+    document.getElementById('filterForm').submit();
+}
+
+function exportTimetable() {
+    // Get current filter parameters
+    const formData = new FormData(document.getElementById('filterForm'));
+    const params = new URLSearchParams(formData);
+    
+    // Create export URL
+    const exportUrl = `/admin/export_timetable?${params.toString()}`;
+    
+    // Download the file
+    window.location.href = exportUrl;
+}
+
+// Auto-submit form when filters change
+document.addEventListener('DOMContentLoaded', function() {
+    const filterSelects = document.querySelectorAll('#filterForm select');
+    filterSelects.forEach(select => {
+        select.addEventListener('change', function() {
+            // Only auto-submit if at least one filter is selected
+            const hasFilters = Array.from(filterSelects).some(s => s.value !== '');
+            if (hasFilters) {
+                document.getElementById('filterForm').submit();
+            }
+        });
+    });
+    
+    // Set current filter values from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    filterSelects.forEach(select => {
+        if (urlParams.has(select.name)) {
+            select.value = urlParams.get(select.name);
+        }
+    });
+});
 </script>
 {% endblock %}
 

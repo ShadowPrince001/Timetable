@@ -61,8 +61,41 @@
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
+                            <label for="room_type" class="form-label">Room Type</label>
+                            <select class="form-select" id="room_type" name="room_type">
+                                <option value="lecture">Lecture Hall</option>
+                                <option value="laboratory">Laboratory</option>
+                                <option value="seminar">Seminar Room</option>
+                                <option value="tutorial">Tutorial Room</option>
+                                <option value="computer_lab">Computer Lab</option>
+                                <option value="auditorium">Auditorium</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="floor" class="form-label">Floor</label>
+                            <input type="number" class="form-control" id="floor" name="floor" min="0" max="20" value="1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="status" class="form-label">Status</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="active">Active</option>
+                                <option value="maintenance">Under Maintenance</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
                             <label for="equipment" class="form-label">Equipment</label>
                             <input type="text" class="form-control" id="equipment" name="equipment" placeholder="e.g., Projector, Whiteboard, AC">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="facilities" class="form-label">Facilities</label>
+                            <input type="text" class="form-control" id="facilities" name="facilities" placeholder="e.g., Air Conditioning, WiFi, etc.">
                         </div>
                     </div>
 

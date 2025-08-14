@@ -34,6 +34,79 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Filter Section -->
+            <div class="card-body border-bottom">
+                <form id="userFilterForm" method="GET" class="row g-3">
+                    <div class="col-md-2">
+                        <label for="filter_role" class="form-label">Role</label>
+                        <select class="form-control" id="filter_role" name="role">
+                            <option value="">All Roles</option>
+                            <option value="admin">Admin</option>
+                            <option value="faculty">Faculty</option>
+                            <option value="student">Student</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_department" class="form-label">Department</label>
+                        <select class="form-control" id="filter_department" name="department">
+                            <option value="">All Departments</option>
+                            <option value="Computer Science">Computer Science</option>
+                            <option value="Mathematics">Mathematics</option>
+                            <option value="Physics">Physics</option>
+                            <option value="Chemistry">Chemistry</option>
+                            <option value="English">English</option>
+                            <option value="Economics">Economics</option>
+                            <option value="Administration">Administration</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_created_date" class="form-label">Created Date</label>
+                        <select class="form-control" id="filter_created_date" name="created_date">
+                            <option value="">All Dates</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="year">This Year</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_has_phone" class="form-label">Phone Status</label>
+                        <select class="form-control" id="filter_has_phone" name="has_phone">
+                            <option value="">All</option>
+                            <option value="yes">Has Phone</option>
+                            <option value="no">No Phone</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_has_address" class="form-label">Address Status</label>
+                        <select class="form-control" id="filter_has_address" name="has_address">
+                            <option value="">All</option>
+                            <option value="yes">Has Address</option>
+                            <option value="no">No Address</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter_has_qualifications" class="form-label">Qualifications</label>
+                        <select class="form-control" id="filter_has_qualifications" name="has_qualifications">
+                            <option value="">All</option>
+                            <option value="yes">Has Qualifications</option>
+                            <option value="no">No Qualifications</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="fas fa-filter me-1"></i>Apply Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearUserFilters()">
+                            <i class="fas fa-times me-1"></i>Clear Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="exportUsers()">
+                            <i class="fas fa-download me-1"></i>Export
+                        </button>
+                    </div>
+                </form>
+            </div>
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-bordered" width="100%" cellspacing="0">

@@ -39,21 +39,45 @@ class User(UserMixin, db.Model):
     department = db.Column(db.String(100))
     phone = db.Column(db.String(20))
     address = db.Column(db.Text)
+    qualifications = db.Column(db.Text)  # For faculty - their teaching qualifications
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Course(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    credits = db.Column(db.Integer, nullable=False)
+    credits = db.Column(db.Integer, nullable=False, default=3)
     department = db.Column(db.String(100), nullable=False)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     max_students = db.Column(db.Integer, default=50)
     semester = db.Column(db.String(20), default='1')
     description = db.Column(db.Text)
+    subject_area = db.Column(db.String(100), nullable=False)  # For teacher qualification checks
+    required_equipment = db.Column(db.Text)  # Equipment required for the course
+    min_capacity = db.Column(db.Integer, default=1)  # Minimum classroom capacity required
+    
+    # Constraints
+    __table_args__ = (
+        db.CheckConstraint('credits >= 1 AND credits <= 6', name='check_credits_range'),
+        db.CheckConstraint('max_students >= 1 AND max_students <= 200', name='check_max_students'),
+        db.CheckConstraint('min_capacity >= 1', name='check_min_capacity'),
+    )
+
+# New model for course-teacher assignments (many-to-many)
+class CourseTeacher(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    is_primary = db.Column(db.Boolean, default=False)  # Primary teacher for the course
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    teacher = db.relationship('User', backref='taught_courses')
+    course = db.relationship('Course', backref='course_teachers')
+    teacher = db.relationship('User', backref='course_assignments')
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('course_id', 'teacher_id', name='unique_course_teacher'),
+    )
 
 class Classroom(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -65,6 +89,12 @@ class Classroom(db.Model):
     status = db.Column(db.String(20), default='active')
     facilities = db.Column(db.Text)
     equipment = db.Column(db.String(200))
+    
+    # Constraints
+    __table_args__ = (
+        db.CheckConstraint('capacity >= 1 AND capacity <= 500', name='check_capacity_range'),
+        db.CheckConstraint('floor >= 0 AND floor <= 20', name='check_floor_range'),
+    )
 
 class TimeSlot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,6 +118,14 @@ class Timetable(db.Model):
     classroom = db.relationship('Classroom', backref='timetable_entries')
     time_slot = db.relationship('TimeSlot', backref='timetable_entries')
     teacher = db.relationship('User', backref='teaching_schedule')
+    
+    # Constraints - Unique constraint to prevent double booking
+    __table_args__ = (
+        db.UniqueConstraint('classroom_id', 'time_slot_id', 'semester', 'academic_year', 
+                           name='unique_classroom_time_slot'),
+        db.UniqueConstraint('teacher_id', 'time_slot_id', 'semester', 'academic_year', 
+                           name='unique_teacher_time_slot'),
+    )
 
 class StudentGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -230,7 +268,10 @@ def faculty_dashboard():
     
     try:
         # Get faculty's courses and timetables
-        courses = Course.query.filter_by(teacher_id=current_user.id).all()
+        # Get courses where faculty is assigned as teacher
+        course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
+        course_ids = [assignment.course_id for assignment in course_assignments]
+        courses = Course.query.filter(Course.id.in_(course_ids)).all() if course_ids else []
         timetables = Timetable.query.filter_by(teacher_id=current_user.id).all()
         
         # Get today's classes
@@ -429,7 +470,40 @@ def admin_timetable():
         return redirect(url_for('dashboard'))
     
     try:
-        timetables = Timetable.query.all()
+        # Get filter parameters
+        day_filter = request.args.get('day', '')
+        course_filter = request.args.get('course', '')
+        teacher_filter = request.args.get('teacher', '')
+        classroom_filter = request.args.get('classroom', '')
+        semester_filter = request.args.get('semester', '')
+        time_slot_filter = request.args.get('time_slot', '')
+        
+        # Build query with filters
+        query = Timetable.query
+        
+        if day_filter:
+            query = query.join(TimeSlot).filter(TimeSlot.day == day_filter)
+        
+        if course_filter:
+            query = query.filter(Timetable.course_id == course_filter)
+        
+        if teacher_filter:
+            query = query.filter(Timetable.teacher_id == teacher_filter)
+        
+        if classroom_filter:
+            query = query.filter(Timetable.classroom_id == classroom_filter)
+        
+        if semester_filter:
+            query = query.filter(Timetable.semester == semester_filter)
+        
+        if time_slot_filter:
+            start_time, end_time = time_slot_filter.split('-')
+            query = query.join(TimeSlot).filter(
+                TimeSlot.start_time == start_time,
+                TimeSlot.end_time == end_time
+            )
+        
+        timetables = query.all()
         courses = Course.query.all()
         classrooms = Classroom.query.all()
         teachers = User.query.filter_by(role='faculty').all()
@@ -460,6 +534,88 @@ def admin_timetable():
                          classrooms=classrooms,
                          teachers=teachers,
                          time_slots=time_slots)
+
+@app.route('/admin/export_timetable')
+@login_required
+def admin_export_timetable():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Apply same filters as the main view
+        day_filter = request.args.get('day', '')
+        course_filter = request.args.get('course', '')
+        teacher_filter = request.args.get('teacher', '')
+        classroom_filter = request.args.get('classroom', '')
+        semester_filter = request.args.get('semester', '')
+        time_slot_filter = request.args.get('time_slot', '')
+        
+        query = Timetable.query
+        
+        if day_filter:
+            query = query.join(TimeSlot).filter(TimeSlot.day == day_filter)
+        if course_filter:
+            query = query.filter(Timetable.course_id == course_filter)
+        if teacher_filter:
+            query = query.filter(Timetable.teacher_id == teacher_filter)
+        if classroom_filter:
+            query = query.filter(Timetable.classroom_id == classroom_filter)
+        if semester_filter:
+            query = query.filter(Timetable.semester == semester_filter)
+        if time_slot_filter:
+            start_time, end_time = time_slot_filter.split('-')
+            query = query.join(TimeSlot).filter(
+                TimeSlot.start_time == start_time,
+                TimeSlot.end_time == end_time
+            )
+        
+        timetables = query.all()
+        
+        # Create CSV content
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['Day', 'Time', 'Course Code', 'Course Name', 'Teacher', 'Teacher Initials', 'Classroom', 'Building', 'Semester', 'Academic Year'])
+        
+        # Write data
+        for tt in timetables:
+            time_slot = TimeSlot.query.get(tt.time_slot_id)
+            course = Course.query.get(tt.course_id)
+            teacher = User.query.get(tt.teacher_id)
+            classroom = Classroom.query.get(tt.classroom_id)
+            
+            if all([time_slot, course, teacher, classroom]):
+                teacher_initials = f"{teacher.name.split()[-1][0]}{teacher.name.split()[0][0]}"
+                writer.writerow([
+                    time_slot.day,
+                    f"{time_slot.start_time}-{time_slot.end_time}",
+                    course.code,
+                    course.name,
+                    teacher.name,
+                    teacher_initials,
+                    classroom.room_number,
+                    classroom.building,
+                    tt.semester,
+                    tt.academic_year
+                ])
+        
+        output.seek(0)
+        
+        from flask import Response
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=timetable_export.csv'}
+        )
+        
+    except Exception as e:
+        flash(f'Error exporting timetable: {str(e)}', 'error')
+        return redirect(url_for('admin_timetable'))
 
 @app.route('/admin/time_slots')
 @login_required
@@ -536,6 +692,11 @@ def admin_add_course():
         department = request.form['department']
         teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
         max_students = int(request.form['max_students'])
+        semester = request.form.get('semester', '1')
+        description = request.form.get('description', '')
+        subject_area = request.form['subject_area']
+        required_equipment = request.form.get('required_equipment', '')
+        min_capacity = int(request.form.get('min_capacity', 1))
         
         if Course.query.filter_by(code=code).first():
             flash('Course code already exists', 'error')
@@ -546,10 +707,25 @@ def admin_add_course():
             name=name,
             credits=credits,
             department=department,
-            teacher_id=teacher_id,
-            max_students=max_students
+            max_students=max_students,
+            semester=semester,
+            description=description,
+            subject_area=subject_area,
+            required_equipment=required_equipment,
+            min_capacity=min_capacity
         )
         db.session.add(course)
+        db.session.flush()  # Get the course ID
+        
+        # Add teacher assignment if specified
+        if teacher_id:
+            course_teacher = CourseTeacher(
+                course_id=course.id,
+                teacher_id=teacher_id,
+                is_primary=True
+            )
+            db.session.add(course_teacher)
+        
         db.session.commit()
         flash('Course added successfully', 'success')
         return redirect(url_for('admin_courses'))
@@ -568,7 +744,11 @@ def admin_add_classroom():
         room_number = request.form['room_number']
         capacity = int(request.form['capacity'])
         building = request.form['building']
-        equipment = request.form['equipment']
+        room_type = request.form.get('room_type', 'lecture')
+        floor = int(request.form.get('floor', 1))
+        status = request.form.get('status', 'active')
+        equipment = request.form.get('equipment', '')
+        facilities = request.form.get('facilities', '')
         
         if Classroom.query.filter_by(room_number=room_number).first():
             flash('Room number already exists', 'error')
@@ -578,7 +758,11 @@ def admin_add_classroom():
             room_number=room_number,
             capacity=capacity,
             building=building,
-            equipment=equipment
+            room_type=room_type,
+            floor=floor,
+            status=status,
+            equipment=equipment,
+            facilities=facilities
         )
         db.session.add(classroom)
         db.session.commit()
@@ -649,10 +833,27 @@ def admin_edit_course(course_id):
         course.name = request.form['name']
         course.credits = int(request.form['credits'])
         course.department = request.form['department']
-        course.teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
         course.max_students = int(request.form['max_students'])
         course.semester = request.form.get('semester', '1')
         course.description = request.form.get('description', '')
+        course.subject_area = request.form['subject_area']
+        course.required_equipment = request.form.get('required_equipment', '')
+        course.min_capacity = int(request.form.get('min_capacity', 1))
+        
+        # Handle teacher assignment
+        teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
+        
+        # Remove existing teacher assignments
+        CourseTeacher.query.filter_by(course_id=course.id).delete()
+        
+        # Add new teacher assignment if specified
+        if teacher_id:
+            course_teacher = CourseTeacher(
+                course_id=course.id,
+                teacher_id=teacher_id,
+                is_primary=True
+            )
+            db.session.add(course_teacher)
         
         db.session.commit()
         flash('Course updated successfully', 'success')
@@ -801,7 +1002,8 @@ def course_details(course_id):
     course = Course.query.get_or_404(course_id)
     
     # Verify this course belongs to the current faculty
-    if course.teacher_id != current_user.id:
+    course_teacher = CourseTeacher.query.filter_by(course_id=course_id, teacher_id=current_user.id).first()
+    if not course_teacher:
         flash('You can only view details for your own courses', 'error')
         return redirect(url_for('faculty_dashboard'))
     
@@ -820,7 +1022,8 @@ def course_attendance(course_id):
     course = Course.query.get_or_404(course_id)
     
     # Verify this course belongs to the current faculty
-    if course.teacher_id != current_user.id:
+    course_teacher = CourseTeacher.query.filter_by(course_id=course_id, teacher_id=current_user.id).first()
+    if not course_teacher:
         flash('You can only view attendance for your own courses', 'error')
         return redirect(url_for('faculty_dashboard'))
     
@@ -1065,6 +1268,31 @@ def student_attendance_alerts():
     
     return render_template('student/attendance_alerts.html', alerts=alerts, course_stats=course_stats)
 
+def is_teacher_qualified(teacher, subject_area):
+    """Check if teacher is qualified to teach a specific subject area"""
+    if not teacher.qualifications:
+        return False
+    
+    # Simple qualification check based on subject area
+    qualifications = teacher.qualifications.lower()
+    subject_area_lower = subject_area.lower()
+    
+    # Define qualification mappings
+    qualification_mappings = {
+        'computer science': ['computer science', 'software engineering', 'information technology', 'cs', 'it'],
+        'mathematics': ['mathematics', 'math', 'applied mathematics', 'statistics'],
+        'physics': ['physics', 'physical sciences'],
+        'chemistry': ['chemistry', 'chemical', 'organic chemistry', 'inorganic chemistry'],
+        'english': ['english', 'literature', 'language'],
+        'economics': ['economics', 'economic', 'business', 'finance']
+    }
+    
+    if subject_area_lower in qualification_mappings:
+        required_qualifications = qualification_mappings[subject_area_lower]
+        return any(qual in qualifications for qual in required_qualifications)
+    
+    return True  # Default to allowing if no specific mapping
+
 # Timetable Management Routes
 @app.route('/admin/add_timetable_entry', methods=['POST'])
 @login_required
@@ -1080,6 +1308,35 @@ def admin_add_timetable_entry():
         time_slot_id = int(request.form['time_slot_id'])
         semester = request.form['semester']
         academic_year = request.form['academic_year']
+        
+        # Check if teacher is qualified for this course
+        course = Course.query.get(course_id)
+        teacher = User.query.get(teacher_id)
+        classroom = Classroom.query.get(classroom_id)
+        
+        if not course or not teacher or not classroom:
+            flash('Invalid course, teacher, or classroom selected', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        # Check if teacher is qualified for this subject
+        if not is_teacher_qualified(teacher, course.subject_area):
+            flash(f'Teacher {teacher.name} is not qualified to teach {course.subject_area}', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        # Check classroom capacity constraint
+        if classroom.capacity < course.min_capacity:
+            flash(f'Classroom {classroom.room_number} capacity ({classroom.capacity}) is less than required minimum ({course.min_capacity})', 'error')
+            return redirect(url_for('admin_timetable'))
+        
+        # Check equipment constraints
+        if course.required_equipment:
+            required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',')]
+            classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',')]
+            
+            missing_equipment = [eq for eq in required_equipment if eq and eq not in classroom_equipment]
+            if missing_equipment:
+                flash(f'Classroom {classroom.room_number} is missing required equipment: {", ".join(missing_equipment)}', 'error')
+                return redirect(url_for('admin_timetable'))
         
         # Check for conflicts
         existing = Timetable.query.filter_by(
@@ -1514,22 +1771,41 @@ def init_db():
                 name='Introduction to Computer Science',
                 credits=3,
                 department='Computer Science',
-                teacher_id=faculty1.id if faculty1 else None,
                 max_students=50,
                 semester='1',
-                description='Fundamental concepts of computer science and programming'
+                description='Fundamental concepts of computer science and programming',
+                subject_area='Computer Science'
             )
             course2 = Course(
                 code='MATH101',
                 name='Calculus I',
                 credits=4,
                 department='Mathematics',
-                teacher_id=faculty2.id if faculty2 else None,
                 max_students=40,
                 semester='1',
-                description='Introduction to differential and integral calculus'
+                description='Introduction to differential and integral calculus',
+                subject_area='Mathematics'
             )
             db.session.add_all([course1, course2])
+            db.session.flush()  # Get course IDs
+            
+            # Add teacher assignments
+            if faculty1:
+                course_teacher1 = CourseTeacher(
+                    course_id=course1.id,
+                    teacher_id=faculty1.id,
+                    is_primary=True
+                )
+                db.session.add(course_teacher1)
+            
+            if faculty2:
+                course_teacher2 = CourseTeacher(
+                    course_id=course2.id,
+                    teacher_id=faculty2.id,
+                    is_primary=True
+                )
+                db.session.add(course_teacher2)
+            
             db.session.commit()
         
         if not Classroom.query.first():
