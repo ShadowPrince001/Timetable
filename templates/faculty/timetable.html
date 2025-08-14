@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}My Timetable - Faculty Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-calendar-alt text-primary me-2"></i>
+            My Teaching Schedule
+        </h1>
+        <p class="text-muted">Complete timetable showing all your classes across all student groups</p>
+    </div>
+</div>
+
+<!-- Timetable Overview Card -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-user-tie me-2"></i>{{ faculty_name }}'s Teaching Schedule
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-calendar fa-3x text-primary mb-2"></i>
+                            <h5 class="text-primary">{{ timetable_by_day|length }}</h5>
+                            <p class="text-muted">Teaching Days</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-clock fa-3x text-success mb-2"></i>
+                            <h5 class="text-success">
+                                {% set total_classes = 0 %}
+                                {% for day, classes in timetable_by_day.items() %}
+                                    {% set total_classes = total_classes + classes|length %}
+                                {% endfor %}
+                                {{ total_classes }}
+                            </h5>
+                            <p class="text-muted">Total Classes</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-users fa-3x text-info mb-2"></i>
+                            <h5 class="text-info">
+                                {% set unique_groups = [] %}
+                                {% for day, classes in timetable_by_day.items() %}
+                                    {% for class in classes %}
+                                        {% if class.student_group not in unique_groups %}
+                                            {% set _ = unique_groups.append(class.student_group) %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                                {{ unique_groups|length }}
+                            </h5>
+                            <p class="text-muted">Student Groups</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-building fa-3x text-warning mb-2"></i>
+                            <h5 class="text-warning">
+                                {% set unique_rooms = [] %}
+                                {% for day, classes in timetable_by_day.items() %}
+                                    {% for class in classes %}
+                                        {% if class.classroom not in unique_rooms %}
+                                            {% set _ = unique_rooms.append(class.classroom) %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                                {{ unique_rooms|length }}
+                            </h5>
+                            <p class="text-muted">Classrooms Used</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Daily Timetables -->
+{% if timetable_by_day %}
+    {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+        {% if day in timetable_by_day and timetable_by_day[day] %}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card shadow">
+                        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 font-weight-bold text-primary">
+                                <i class="fas fa-calendar-day me-2"></i>{{ day }}
+                            </h6>
+                            <span class="badge bg-primary">{{ timetable_by_day[day]|length }} classes</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Course</th>
+                                            <th>Student Group</th>
+                                            <th>Classroom</th>
+                                            <th>Building</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for class in timetable_by_day[day] %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ class.start_time }} - {{ class.end_time }}</strong>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        <strong>{{ class.course_code }}</strong><br>
+                                                        <small class="text-muted">{{ class.course_name }}</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-info">{{ class.student_group }}</span>
+                                                </td>
+                                                <td>
+                                                    <i class="fas fa-door-open me-1"></i>{{ class.classroom }}
+                                                </td>
+                                                <td>
+                                                    <i class="fas fa-building me-1"></i>{{ class.building }}
+                                                </td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-outline-primary" 
+                                                            onclick="showClassDetails('{{ class.course_code }}', '{{ class.student_group }}', '{{ class.classroom }}', '{{ class.building }}', '{{ class.start_time }}', '{{ class.end_time }}')">
+                                                        <i class="fas fa-info-circle"></i> Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    {% endfor %}
+{% else %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-calendar-times fa-4x text-muted mb-3"></i>
+                    <h4 class="text-muted">No Classes Scheduled</h4>
+                    <p class="text-muted">You don't have any classes scheduled yet.</p>
+                    <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Class Details Modal -->
+<div class="modal fade" id="classDetailsModal" tabindex="-1" aria-labelledby="classDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="classDetailsModalLabel">Class Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Course:</strong><br>
+                        <span id="modalCourse"></span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Student Group:</strong><br>
+                        <span id="modalGroup"></span>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Classroom:</strong><br>
+                        <span id="modalClassroom"></span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Building:</strong><br>
+                        <span id="modalBuilding"></span>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Time:</strong><br>
+                        <span id="modalTime"></span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Day:</strong><br>
+                        <span id="modalDay"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showClassDetails(courseCode, studentGroup, classroom, building, startTime, endTime) {
+    document.getElementById('modalCourse').textContent = courseCode;
+    document.getElementById('modalGroup').textContent = studentGroup;
+    document.getElementById('modalClassroom').textContent = classroom;
+    document.getElementById('modalBuilding').textContent = building;
+    document.getElementById('modalTime').textContent = startTime + ' - ' + endTime;
+    
+    // Get current day from the context
+    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    document.getElementById('modalDay').textContent = currentDay;
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('classDetailsModal'));
+    modal.show();
+}
+</script>
+{% endblock %}
