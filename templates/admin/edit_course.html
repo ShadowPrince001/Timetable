@@ -116,7 +116,7 @@
                         <select class="form-control" id="teacher_id" name="teacher_id">
                             <option value="">No Teacher Assigned</option>
                             {% for teacher in teachers %}
-                                <option value="{{ teacher.id }}">
+                                <option value="{{ teacher.id }}" {% if teacher.id == course.teacher_id %}selected{% endif %}>
                                     {{ teacher.name }} ({{ teacher.department }})
                                 </option>
                             {% endfor %}
