@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """
-Automatic Timetable Generator
-Generates conflict-free timetables for student groups considering:
-- Teacher availability
-- Classroom capacity and type
-- Non-overlapping classes for student groups
-- Subject frequency per week
-- Time slot constraints
+Multi-Group Timetable Generator
+Generates separate timetables for each student group while ensuring
+global constraints prevent conflicts between groups.
 """
 
-import random
-from datetime import datetime, timedelta
-from typing import List, Dict, Set, Tuple, Optional
 from dataclasses import dataclass
+from typing import List, Dict, Optional, Set, Tuple
 from collections import defaultdict
+import random
 
 @dataclass
 class TimeSlot:
@@ -21,40 +16,43 @@ class TimeSlot:
     day: str
     start_time: str
     end_time: str
+    break_type: str = 'none'
 
 @dataclass
 class Course:
     id: int
     code: str
     name: str
-    periods_per_week: int
     department: str
-    required_equipment: str
-    min_capacity: int
-    max_students: int
+    periods_per_week: int
+    subject_area: str
+    required_equipment: str = ''
+    min_capacity: int = 1
+    max_students: int = 50
 
 @dataclass
 class Classroom:
     id: int
     room_number: str
     capacity: int
-    room_type: str
-    equipment: str
     building: str
+    room_type: str = 'lecture'
+    equipment: str = ''
 
 @dataclass
 class Teacher:
     id: int
     name: str
     department: str
-    availability: Dict[str, List[str]]  # day -> list of time slots
+    availability: Set[Tuple[str, str]] = None  # Set of (day, time) tuples
 
 @dataclass
 class StudentGroup:
     id: int
     name: str
     department: str
-    courses: List[Course]
+    year: int
+    semester: int
 
 @dataclass
 class TimetableEntry:
@@ -71,14 +69,16 @@ class TimetableEntry:
     teacher_name: str
     classroom_number: str
 
-class TimetableGenerator:
+class MultiGroupTimetableGenerator:
     def __init__(self):
         self.time_slots = []
         self.courses = []
         self.classrooms = []
         self.teachers = []
         self.student_groups = []
-        self.generated_timetables = {}
+        self.generated_timetables = {}  # group_id -> List[TimetableEntry]
+        self.global_classroom_usage = {}  # (day, time) -> classroom_id
+        self.global_teacher_usage = {}    # (day, time) -> teacher_id
         self.conflicts = []
         
     def add_time_slots(self, time_slots: List[TimeSlot]):
@@ -102,26 +102,22 @@ class TimetableGenerator:
         self.student_groups = student_groups
         
     def generate_timetables(self) -> Dict[int, List[TimetableEntry]]:
-        """Generate timetables for all student groups"""
-        print("🚀 Starting automatic timetable generation...")
+        """Generate separate timetables for all student groups with global constraints"""
+        print("🚀 Starting multi-group timetable generation...")
         
-        # Reset generated timetables
+        # Reset state
         self.generated_timetables = {}
+        self.global_classroom_usage = {}
+        self.global_teacher_usage = {}
         self.conflicts = []
         
         # Sort courses by priority (more periods per week first)
         sorted_courses = sorted(self.courses, key=lambda x: x.periods_per_week, reverse=True)
         
-        # Track global resource usage
-        global_classroom_usage = {}  # (day, time) -> classroom_id
-        global_teacher_usage = {}    # (day, time) -> teacher_id
-        
         # Generate timetable for each student group
         for group in self.student_groups:
             print(f"📅 Generating timetable for {group.name}...")
-            group_timetable = self._generate_group_timetable_with_global_constraints(
-                group, sorted_courses, global_classroom_usage, global_teacher_usage
-            )
+            group_timetable = self._generate_group_timetable(group, sorted_courses)
             
             if not group_timetable:
                 print(f"❌ Failed to generate timetable for {group.name}")
@@ -129,13 +125,10 @@ class TimetableGenerator:
                 
             self.generated_timetables[group.id] = group_timetable
             
-            # Update global usage
-            for entry in group_timetable:
-                slot_key = (entry.day, entry.start_time)
-                global_classroom_usage[slot_key] = entry.classroom_id
-                global_teacher_usage[slot_key] = entry.teacher_id
+            # Update global usage tracking
+            self._update_global_usage(group_timetable)
         
-        print(f"✅ Timetable generation completed!")
+        print(f"✅ Multi-group timetable generation completed!")
         print(f"📊 Generated timetables for {len(self.generated_timetables)} groups")
         
         return self.generated_timetables
@@ -143,11 +136,16 @@ class TimetableGenerator:
     def _generate_group_timetable(self, group: StudentGroup, sorted_courses: List[Course]) -> List[TimetableEntry]:
         """Generate timetable for a specific student group"""
         timetable = []
-        used_time_slots = set()
-        used_classrooms = defaultdict(set)  # day -> set of time slots
+        group_used_time_slots = set()  # Local to this group
         
-        # Get courses for this group
+        # Get courses for this group (filter by department)
         group_courses = [c for c in sorted_courses if c.department == group.department]
+        
+        if not group_courses:
+            print(f"⚠️ No courses found for group {group.name}")
+            return []
+        
+        print(f"📚 Scheduling {len(group_courses)} courses for {group.name}")
         
         for course in group_courses:
             if course.periods_per_week <= 0:
@@ -160,16 +158,16 @@ class TimetableGenerator:
             while periods_scheduled < course.periods_per_week and attempts < max_attempts:
                 attempts += 1
                 
-                # Find available time slot and classroom
-                slot, classroom = self._find_available_slot_and_classroom(
-                    course, group, used_time_slots, used_classrooms
+                # Find available time slot and classroom considering global constraints
+                slot, classroom, teacher = self._find_available_resources(
+                    course, group, group_used_time_slots
                 )
                 
-                if slot and classroom:
+                if slot and classroom and teacher:
                     # Create timetable entry
                     entry = TimetableEntry(
                         course_id=course.id,
-                        teacher_id=self._get_available_teacher(course, slot),
+                        teacher_id=teacher.id,
                         classroom_id=classroom.id,
                         time_slot_id=slot.id,
                         student_group_id=group.id,
@@ -178,480 +176,190 @@ class TimetableGenerator:
                         end_time=slot.end_time,
                         course_code=course.code,
                         course_name=course.name,
-                        teacher_name=self._get_teacher_name(course, slot),
+                        teacher_name=teacher.name,
                         classroom_number=classroom.room_number
                     )
                     
                     timetable.append(entry)
-                    used_time_slots.add((slot.day, slot.start_time))
-                    used_classrooms[slot.day].add(slot.start_time)
+                    group_used_time_slots.add((slot.day, slot.start_time))
                     periods_scheduled += 1
                     
                 else:
-                    # Try to find alternative time slots
-                    slot = self._find_alternative_slot(course, group, used_time_slots)
-                    if slot:
-                        classroom = self._find_alternative_classroom(course, slot, used_classrooms)
-                        if classroom:
-                            entry = TimetableEntry(
-                                course_id=course.id,
-                                teacher_id=self._get_available_teacher(course, slot),
-                                classroom_id=classroom.id,
-                                time_slot_id=slot.id,
-                                student_group_id=group.id,
-                                day=slot.day,
-                                start_time=slot.start_time,
-                                end_time=slot.end_time,
-                                course_code=course.code,
-                                course_name=course.name,
-                                teacher_name=self._get_teacher_name(course, slot),
-                                classroom_number=classroom.room_number
-                            )
-                            
-                            timetable.append(entry)
-                            used_time_slots.add((slot.day, slot.start_time))
-                            used_classrooms[slot.day].add(slot.start_time)
-                            periods_scheduled += 1
+                    # Try alternative approaches
+                    if attempts % 20 == 0:
+                        print(f"🔄 Attempt {attempts} for {course.code} in {group.name}")
                 
                 if attempts >= max_attempts:
-                    print(f"⚠️  Warning: Could not schedule all periods for {course.code} in {group.name}")
+                    print(f"⚠️ Warning: Could not schedule all periods for {course.code} in {group.name}")
                     break
         
+        print(f"✅ {group.name}: {len(timetable)} entries scheduled")
         return timetable
     
-    def _generate_group_timetable_with_global_constraints(self, group: StudentGroup, sorted_courses: List[Course],
-                                                        global_classroom_usage: Dict, global_teacher_usage: Dict) -> Optional[List[TimetableEntry]]:
-        """Generate timetable for a specific student group with global constraint checking"""
-        timetable = []
-        used_time_slots = set()
-        
-        # Get courses for this group
-        group_courses = [c for c in sorted_courses if c.department == group.department]
-        
-        for course in group_courses:
-            if course.periods_per_week <= 0:
-                continue
-                
-            periods_scheduled = 0
-            attempts = 0
-            max_attempts = 200  # Increased attempts for better success rate
-            
-            while periods_scheduled < course.periods_per_week and attempts < max_attempts:
-                attempts += 1
-                
-                # Find available time slot and classroom considering global constraints
-                slot, classroom = self._find_available_slot_and_classroom_with_global_constraints(
-                    course, group, used_time_slots, global_classroom_usage, global_teacher_usage
-                )
-                
-                if slot and classroom:
-                    # Create timetable entry
-                    teacher_id = self._get_available_teacher_with_global_constraints(
-                        course, slot, global_teacher_usage
-                    )
-                    
-                    if teacher_id:
-                        entry = TimetableEntry(
-                            course_id=course.id,
-                            teacher_id=teacher_id,
-                            classroom_id=classroom.id,
-                            time_slot_id=slot.id,
-                            student_group_id=group.id,
-                            day=slot.day,
-                            start_time=slot.start_time,
-                            end_time=slot.end_time,
-                            course_code=course.code,
-                            course_name=course.name,
-                            teacher_name=self._get_teacher_name_by_id(teacher_id),
-                            classroom_number=classroom.room_number
-                        )
-                        
-                        timetable.append(entry)
-                        used_time_slots.add((slot.day, slot.start_time))
-                        periods_scheduled += 1
-                
-                if attempts >= max_attempts:
-                    print(f"⚠️  Warning: Could not schedule all periods for {course.code} in {group.name}")
-                    break
-        
-        # Check if we scheduled enough periods
-        total_required = sum(c.periods_per_week for c in group_courses)
-        total_scheduled = len(timetable)
-        
-        if total_scheduled < total_required * 0.8:  # Allow 80% completion
-            print(f"❌ Failed to generate adequate timetable for {group.name}. Scheduled: {total_scheduled}/{total_required}")
-            return None
-            
-        return timetable
-    
-        def _find_available_slot_and_classroom(
-        self,
-        course: Course,
-        group: StudentGroup,
-        used_time_slots: Set[Tuple[str, str]],
-        used_classrooms: Dict[str, Set[str]]
-        ) -> Tuple[Optional[TimeSlot], Optional[Classroom]]:
-        #Find available time slot and classroom for a course
-        # Shuffle time slots for randomization
-            shuffled_slots = self.time_slots.copy()
-            random.shuffle(shuffled_slots)
-        
-        # Try each time slot
-        for slot in shuffled_slots:
-            # Check if time slot is already used by this group
-            if (slot.day, slot.start_time) in used_time_slots:
-                continue
-                
-            # Find suitable classroom for this time slot
-            classroom = self._find_suitable_classroom(course, slot, used_classrooms)
-            if classroom:
-                return slot, classroom
-                
-        # If no slot found, try to find any available slot with any classroom
-        for slot in self.time_slots:
-            if (slot.day, slot.start_time) in used_time_slots:
-                continue
-                
-            for classroom in self.classrooms:
-                if (slot.day, slot.start_time) not in used_classrooms.get(slot.day, set()):
-                    if classroom.capacity >= course.min_capacity:
-                        return slot, classroom
-                
-        return None, None
-    
-    def _find_suitable_classroom(self, course: Course, slot: TimeSlot, 
-                               used_classrooms: Dict[str, Set[str]]) -> Optional[Classroom]:
-        """Find a suitable classroom for a course at a specific time"""
-        suitable_classrooms = []
-        
-        for classroom in self.classrooms:
-            # Check if classroom is available at this time
-            if slot.start_time in used_classrooms.get(slot.day, set()):
-                continue
-                
-            # Check capacity requirements
-            if classroom.capacity < course.min_capacity:
-                continue
-                
-            # Check if classroom type matches course requirements
-            if self._classroom_suitable_for_course(classroom, course):
-                suitable_classrooms.append(classroom)
-        
-        if suitable_classrooms:
-            # Prefer smaller classrooms to leave larger ones for bigger courses
-            return min(suitable_classrooms, key=lambda x: x.capacity)
-        
-        return None
-    
-    def _classroom_suitable_for_course(self, classroom: Classroom, course: Course) -> bool:
-        """Check if classroom is suitable for a course based on equipment and type"""
-        # Basic equipment matching
-        if "Computer Lab" in classroom.room_type and "Computer" in course.required_equipment:
-            return True
-        if "Lecture Hall" in classroom.room_type and "Whiteboard" in course.required_equipment:
-            return True
-        if "Lab" in classroom.room_type and "Lab" in course.required_equipment:
-            return True
-        
-        # Default: any classroom can be used
-        return True
-    
-    def _get_available_teacher(self, course: Course, slot: TimeSlot) -> int:
-        """Get an available teacher for a course at a specific time"""
-        available_teachers = []
-        
-        for teacher in self.teachers:
-            if teacher.department == course.department:
-                # Check teacher availability
-                if slot.day in teacher.availability:
-                    if slot.start_time in teacher.availability[slot.day]:
-                        available_teachers.append(teacher)
-        
-        if available_teachers:
-            return random.choice(available_teachers).id
-        
-        # Return first teacher from department if no availability info
-        for teacher in self.teachers:
-            if teacher.department == course.department:
-                return teacher.id
-        
-        return 1  # Default teacher ID
-    
-    def _get_teacher_name(self, course: Course, slot: TimeSlot) -> str:
-        """Get teacher name for a course"""
-        teacher_id = self._get_available_teacher(course, slot)
-        for teacher in self.teachers:
-            if teacher.id == teacher_id:
-                return teacher.name
-        return "Unknown Teacher"
-    
-    def _find_alternative_slot(self, course: Course, group: StudentGroup, 
-                             used_time_slots: Set[Tuple[str, str]]) -> Optional[TimeSlot]:
-        """Find alternative time slot when primary slot is not available"""
-        for slot in self.time_slots:
-            if (slot.day, slot.start_time) not in used_time_slots:
-                return slot
-        return None
-    
-    def _find_alternative_classroom(self, course: Course, slot: TimeSlot, 
-                                  used_classrooms: Dict[str, Set[str]]) -> Optional[Classroom]:
-        """Find alternative classroom when primary classroom is not available"""
-        for classroom in self.classrooms:
-            if slot.start_time not in used_classrooms.get(slot.day, set()):
-                if classroom.capacity >= course.min_capacity:
-                    return classroom
-        return None
-    
-    def _check_global_conflicts(self):
-        """Check for conflicts across all groups"""
-        all_entries = []
-        for group_id, timetable in self.generated_timetables.items():
-            all_entries.extend(timetable)
-        
-        # Check for teacher conflicts
-        teacher_slots = defaultdict(set)
-        for entry in all_entries:
-            slot_key = (entry.day, entry.start_time)
-            if slot_key in teacher_slots:
-                self.conflicts.append(f"Teacher conflict: {entry.teacher_name} at {entry.day} {entry.start_time}")
-            teacher_slots[slot_key].add(entry.teacher_id)
-        
-        # Check for classroom conflicts
-        classroom_slots = defaultdict(set)
-        for entry in all_entries:
-            slot_key = (entry.day, entry.start_time)
-            if slot_key in classroom_slots:
-                self.conflicts.append(f"Classroom conflict: {entry.classroom_number} at {entry.day} {entry.start_time}")
-            classroom_slots[slot_key].add(entry.classroom_id)
-    
-    def get_faculty_timetable(self, teacher_id: int) -> List[TimetableEntry]:
-        """Get timetable for a specific faculty member"""
-        faculty_timetable = []
-        
-        for group_id, timetable in self.generated_timetables.items():
-            for entry in timetable:
-                if entry.teacher_id == teacher_id:
-                    faculty_timetable.append(entry)
-        
-        # Sort by day and time
-        faculty_timetable.sort(key=lambda x: (self._day_to_number(x.day), x.start_time))
-        
-        return faculty_timetable
-    
-    def get_compiled_timetable(self) -> List[TimetableEntry]:
-        """Get compiled timetable showing all groups"""
-        compiled = []
-        
-        for group_id, timetable in self.generated_timetables.items():
-            compiled.extend(timetable)
-        
-        # Sort by day, time, and group
-        compiled.sort(key=lambda x: (self._day_to_number(x.day), x.start_time, x.student_group_id))
-        
-        return compiled
-    
-    def _day_to_number(self, day: str) -> int:
-        """Convert day string to number for sorting"""
-        day_map = {
-            'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 
-            'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
-        }
-        return day_map.get(day, 0)
-    
-    def export_timetable_csv(self, timetable: List[TimetableEntry], filename: str):
-        """Export timetable to CSV format"""
-        import csv
-        
-        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Day', 'Time', 'Course', 'Teacher', 'Classroom', 'Group']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
-            writer.writeheader()
-            for entry in timetable:
-                writer.writerow({
-                    'Day': entry.day,
-                    'Time': f"{entry.start_time}-{entry.end_time}",
-                    'Course': f"{entry.course_code} - {entry.course_name}",
-                    'Teacher': entry.teacher_name,
-                    'Classroom': entry.classroom_number,
-                    'Group': entry.student_group_id
-                })
-        
-        print(f"📄 Timetable exported to {filename}")
-    
-    def check_feasibility(self) -> Dict:
-        """Check if timetable generation is feasible with current constraints"""
-        total_required_periods = 0
-        total_available_slots = len(self.time_slots) * 5  # 5 weekdays
-        
-        # Calculate total required periods
-        for group in self.student_groups:
-            for course in group.courses:
-                total_required_periods += course.periods_per_week
-        
-        # Check if we have enough time slots
-        if total_required_periods > total_available_slots:
-            return {
-                'feasible': False,
-                'reason': f'Not enough time slots. Required: {total_required_periods}, Available: {total_available_slots}',
-                'required_periods': total_required_periods,
-                'available_slots': total_available_slots
-            }
-        
-        # Check if we have enough classrooms
-        total_classroom_slots = len(self.classrooms) * total_available_slots
-        if total_required_periods > total_classroom_slots:
-            return {
-                'feasible': False,
-                'reason': f'Not enough classroom capacity. Required: {total_required_periods}, Available: {total_classroom_slots}',
-                'required_periods': total_required_periods,
-                'available_classroom_slots': total_classroom_slots
-            }
-        
-        return {
-            'feasible': True,
-            'reason': 'Generation appears feasible',
-            'required_periods': total_required_periods,
-            'available_slots': total_available_slots,
-            'available_classroom_slots': total_classroom_slots
-        }
-    
-    def get_constraint_suggestions(self) -> List[str]:
-        """Get suggestions for making timetable generation feasible"""
-        suggestions = []
-        
-        # Check time slot constraints
-        total_required_periods = sum(c.periods_per_week for group in self.student_groups for c in group.courses)
-        total_available_slots = len(self.time_slots) * 5
-        
-        if total_required_periods > total_available_slots:
-            suggestions.append(f"Add more time slots. Currently {len(self.time_slots)} slots, need at least {total_required_periods // 5 + 1} slots per day")
-        
-        # Check classroom constraints
-        if len(self.classrooms) < 2:
-            suggestions.append("Add more classrooms. Currently only {len(self.classrooms)} classroom(s)")
-        
-        # Check teacher constraints
-        if len(self.teachers) < 2:
-            suggestions.append("Add more teachers. Currently only {len(self.teachers)} teacher(s)")
-        
-        # Check course distribution
-        dept_courses = {}
-        for group in self.student_groups:
-            if group.department not in dept_courses:
-                dept_courses[group.department] = 0
-            dept_courses[group.department] += sum(c.periods_per_week for c in group.courses)
-        
-        for dept, periods in dept_courses.items():
-            if periods > total_available_slots * 0.8:  # If department uses more than 80% of slots
-                suggestions.append(f"Reduce course load for {dept} department. Currently {periods} periods, max recommended {int(total_available_slots * 0.6)}")
-        
-        return suggestions
-    
-    def analyze_constraints(self) -> Dict:
-        """Analyze current constraints and provide detailed information"""
-        analysis = {
-            'time_slots': {
-                'total': len(self.time_slots),
-                'days': len(set(ts.day for ts in self.time_slots)),
-                'slots_per_day': len(self.time_slots) // max(1, len(set(ts.day for ts in self.time_slots)))
-            },
-            'classrooms': {
-                'total': len(self.classrooms),
-                'total_capacity': sum(c.capacity for c in self.classrooms),
-                'avg_capacity': sum(c.capacity for c in self.classrooms) // max(1, len(self.classrooms))
-            },
-            'teachers': {
-                'total': len(self.teachers),
-                'departments': len(set(t.department for t in self.teachers))
-            },
-            'student_groups': {
-                'total': len(self.student_groups),
-                'departments': len(set(g.department for g in self.student_groups))
-            },
-            'courses': {
-                'total': len(self.courses),
-                'total_periods': sum(c.periods_per_week for c in self.courses),
-                'avg_periods_per_course': sum(c.periods_per_week for c in self.courses) // max(1, len(self.courses))
-            }
-        }
-        
-        # Calculate utilization ratios
-        total_available_slots = len(self.time_slots) * 5
-        total_required_periods = sum(c.periods_per_week for c in self.courses)
-        
-        analysis['utilization'] = {
-            'time_slot_usage': round((total_required_periods / total_available_slots) * 100, 2),
-            'classroom_usage': round((total_required_periods / (len(self.classrooms) * total_available_slots)) * 100, 2),
-            'teacher_usage': round((total_required_periods / (len(self.teachers) * total_available_slots)) * 100, 2)
-        }
-        
-        return analysis
-    
-    def get_statistics(self) -> Dict:
-        """Get statistics about the generated timetables"""
-        total_courses = len(set(entry.course_id for entries in self.generated_timetables.values() for entry in entries))
-        total_periods = sum(len(entries) for entries in self.generated_timetables.values())
-        total_groups = len(self.generated_timetables)
-        
-        # Calculate utilization
-        total_slots = len(self.time_slots) * total_groups
-        utilization = (total_periods / total_slots * 100) if total_slots > 0 else 0
-        
-        return {
-            'total_groups': total_groups,
-            'total_courses': total_courses,
-            'total_periods': total_periods,
-            'utilization_percentage': round(utilization, 2),
-            'conflicts': len(self.conflicts)
-        }
-    
-    def _find_available_slot_and_classroom_with_global_constraints(self, course: Course, group: StudentGroup,
-                                                                  used_time_slots: Set[Tuple[str, str]],
-                                                                  global_classroom_usage: Dict, global_teacher_usage: Dict) -> Tuple[Optional[TimeSlot], Optional[Classroom]]:
-        """Find available time slot and classroom considering global constraints"""
-        shuffled_slots = self.time_slots.copy()
+    def _find_available_resources(self, course: Course, group: StudentGroup, 
+                                 group_used_slots: Set[Tuple[str, str]]) -> Tuple[Optional[TimeSlot], Optional[Classroom], Optional[Teacher]]:
+        """Find available time slot, classroom, and teacher for a course"""
+        # Shuffle time slots for better distribution
+        shuffled_slots = list(self.time_slots)
         random.shuffle(shuffled_slots)
         
         for slot in shuffled_slots:
             slot_key = (slot.day, slot.start_time)
             
-            # Check if time slot is already used by this group
-            if slot_key in used_time_slots:
+            # Check if slot is used by this group
+            if slot_key in group_used_slots:
                 continue
                 
-            # Check if classroom is globally used at this time
-            if slot_key in global_classroom_usage:
+            # Check global classroom conflict
+            if slot_key in self.global_classroom_usage:
                 continue
                 
-            # Find suitable classroom
-            for classroom in self.classrooms:
-                if classroom.capacity >= course.min_capacity:
-                    return slot, classroom
-                    
-        return None, None
+            # Check global teacher conflict
+            if slot_key in self.global_teacher_usage:
+                continue
+                
+            # Find available classroom
+            classroom = self._find_available_classroom(course, slot)
+            if not classroom:
+                continue
+                
+            # Find available teacher
+            teacher = self._find_available_teacher(course, slot)
+            if not teacher:
+                continue
+                
+            return slot, classroom, teacher
+        
+        return None, None, None
     
-    def _get_available_teacher_with_global_constraints(self, course: Course, slot: TimeSlot, global_teacher_usage: Dict) -> Optional[int]:
-        """Get available teacher considering global constraints"""
+    def _find_available_classroom(self, course: Course, slot: TimeSlot) -> Optional[Classroom]:
+        """Find available classroom for a course and time slot"""
         slot_key = (slot.day, slot.start_time)
         
-        for teacher in self.teachers:
-            if teacher.department == course.department:
-                # Check if teacher is globally available at this time
-                if slot_key not in global_teacher_usage or global_teacher_usage[slot_key] != teacher.id:
-                    return teacher.id
-                    
+        # Filter classrooms by capacity and equipment requirements
+        suitable_classrooms = [
+            c for c in self.classrooms
+            if c.capacity >= course.min_capacity and
+            (not course.required_equipment or course.required_equipment in c.equipment)
+        ]
+        
+        # Shuffle for better distribution
+        random.shuffle(suitable_classrooms)
+        
+        for classroom in suitable_classrooms:
+            # Check if classroom is available at this time globally
+            if slot_key not in self.global_classroom_usage:
+                return classroom
+        
         return None
     
-    def _get_teacher_name_by_id(self, teacher_id: int) -> str:
-        """Get teacher name by ID"""
-        for teacher in self.teachers:
-            if teacher.id == teacher_id:
-                return teacher.name
-        return "Unknown Teacher"
-
-# Example usage and testing
-if __name__ == "__main__":
-    # This would be used by the main application
-    print("🚀 Timetable Generator Module Loaded")
-    print("Use this module to generate automatic timetables for student groups")
+    def _find_available_teacher(self, course: Course, slot: TimeSlot) -> Optional[Teacher]:
+        """Find available teacher for a course and time slot"""
+        slot_key = (slot.day, slot.start_time)
+        
+        # Filter teachers by department
+        suitable_teachers = [
+            t for t in self.teachers
+            if t.department == course.department
+        ]
+        
+        # Shuffle for better distribution
+        random.shuffle(suitable_teachers)
+        
+        for teacher in suitable_teachers:
+            # Check if teacher is available at this time globally
+            if slot_key not in self.global_teacher_usage:
+                return teacher
+        
+        return None
+    
+    def _update_global_usage(self, group_timetable: List[TimetableEntry]):
+        """Update global resource usage tracking"""
+        for entry in group_timetable:
+            slot_key = (entry.day, entry.start_time)
+            self.global_classroom_usage[slot_key] = entry.classroom_id
+            self.global_teacher_usage[slot_key] = entry.teacher_id
+    
+    def get_faculty_timetable(self, teacher_id: int) -> List[TimetableEntry]:
+        """Get compiled timetable for a specific faculty member across all groups"""
+        faculty_timetable = []
+        
+        for group_id, group_timetable in self.generated_timetables.items():
+            for entry in group_timetable:
+                if entry.teacher_id == teacher_id:
+                    faculty_timetable.append(entry)
+        
+        # Sort by day and time
+        faculty_timetable.sort(key=lambda x: (x.day, x.start_time))
+        return faculty_timetable
+    
+    def get_group_timetable(self, group_id: int) -> List[TimetableEntry]:
+        """Get timetable for a specific student group"""
+        return self.generated_timetables.get(group_id, [])
+    
+    def get_all_timetables(self) -> Dict[int, List[TimetableEntry]]:
+        """Get all generated timetables"""
+        return self.generated_timetables
+    
+    def validate_constraints(self) -> bool:
+        """Validate that all global constraints are satisfied"""
+        print("🔍 Validating global constraints...")
+        
+        classroom_conflicts = set()
+        teacher_conflicts = set()
+        
+        # Check for classroom conflicts
+        classroom_usage = defaultdict(list)
+        for group_id, group_timetable in self.generated_timetables.items():
+            for entry in group_timetable:
+                slot_key = (entry.day, entry.start_time)
+                classroom_usage[slot_key].append((entry.classroom_id, group_id))
+                
+                if len(classroom_usage[slot_key]) > 1:
+                    classroom_conflicts.add(slot_key)
+        
+        # Check for teacher conflicts
+        teacher_usage = defaultdict(list)
+        for group_id, group_timetable in self.generated_timetables.items():
+            for entry in group_timetable:
+                slot_key = (entry.day, entry.start_time)
+                teacher_usage[slot_key].append((entry.teacher_id, group_id))
+                
+                if len(teacher_usage[slot_key]) > 1:
+                    teacher_conflicts.add(slot_key)
+        
+        if classroom_conflicts or teacher_conflicts:
+            print("❌ Constraint violations found:")
+            if classroom_conflicts:
+                print(f"   • Classroom conflicts: {len(classroom_conflicts)}")
+            if teacher_conflicts:
+                print(f"   • Teacher conflicts: {len(teacher_conflicts)}")
+            return False
+        
+        print("✅ All global constraints satisfied")
+        return True
+    
+    def print_summary(self):
+        """Print summary of generated timetables"""
+        print("\n📊 Multi-Group Timetable Summary")
+        print("=" * 50)
+        
+        total_entries = 0
+        for group_id, group_timetable in self.generated_timetables.items():
+            group_name = next((g.name for g in self.student_groups if g.id == group_id), f"Group {group_id}")
+            print(f"📅 {group_name}: {len(group_timetable)} entries")
+            total_entries += len(group_timetable)
+        
+        print(f"\n📈 Total Entries: {total_entries}")
+        print(f"🏫 Groups: {len(self.generated_timetables)}")
+        print(f"⏰ Time Slots Used: {len(self.global_classroom_usage)}")
+        
+        # Faculty summary
+        faculty_workload = defaultdict(int)
+        for group_timetable in self.generated_timetables.values():
+            for entry in group_timetable:
+                faculty_workload[entry.teacher_name] += 1
+        
+        print(f"\n👨‍🏫 Faculty Workload:")
+        for teacher, count in sorted(faculty_workload.items(), key=lambda x: x[1], reverse=True):
+            print(f"   • {teacher}: {count} classes")

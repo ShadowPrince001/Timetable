@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Comprehensive Database Reset Script
@@ -328,35 +329,51 @@ def init_sample_data():
     
     # Create sample timetables
     print("📅 Creating sample timetables...")
-    timetable1 = Timetable(
-        course_id=course1.id,
-        teacher_id=faculty1.id,
-        classroom_id=classroom1.id,
-        time_slot_id=time_slots[0].id,  # Monday 9:00-10:00
-        semester='Fall 2024',
-        academic_year='2024-25'
-    )
+    group1 = StudentGroup.query.filter_by(name='CS-2024-1').first()
+    group2 = StudentGroup.query.filter_by(name='MATH-2024-1').first()
     
-    timetable2 = Timetable(
-        course_id=course2.id,
-        teacher_id=faculty1.id,
-        classroom_id=classroom4.id,
-        time_slot_id=time_slots[8].id,  # Tuesday 10:00-11:00
-        semester='Fall 2024',
-        academic_year='2024-25'
-    )
+    if group1:
+        timetable1 = Timetable(
+            course_id=course1.id,
+            teacher_id=faculty1.id,
+            classroom_id=classroom1.id,
+            time_slot_id=time_slots[0].id,  # Monday 9:00-10:00
+            student_group_id=group1.id,
+            semester='Fall 2024',
+            academic_year='2024-25'
+        )
+        
+        timetable2 = Timetable(
+            course_id=course2.id,
+            teacher_id=faculty1.id,
+            classroom_id=classroom4.id,
+            time_slot_id=time_slots[8].id,  # Tuesday 10:00-11:00
+            student_group_id=group1.id,
+            semester='Fall 2024',
+            academic_year='2024-25'
+        )
     
-    timetable3 = Timetable(
-        course_id=course3.id,
-        teacher_id=faculty2.id,
-        classroom_id=classroom2.id,
-        time_slot_id=time_slots[16].id,  # Wednesday 11:00-12:00
-        semester='Fall 2024',
-        academic_year='2024-25'
-    )
+    if group2:
+        timetable3 = Timetable(
+            course_id=course3.id,
+            teacher_id=faculty2.id,
+            classroom_id=classroom2.id,
+            time_slot_id=time_slots[16].id,  # Wednesday 11:00-12:00
+            student_group_id=group2.id,
+            semester='Fall 2024',
+            academic_year='2024-25'
+        )
     
-    db.session.add_all([timetable1, timetable2, timetable3])
-    db.session.commit()
+    # Add timetables conditionally
+    timetables_to_add = []
+    if group1:
+        timetables_to_add.extend([timetable1, timetable2])
+    if group2:
+        timetables_to_add.append(timetable3)
+    
+    if timetables_to_add:
+        db.session.add_all(timetables_to_add)
+        db.session.commit()
     
     print("✅ Sample data initialization completed!")
 

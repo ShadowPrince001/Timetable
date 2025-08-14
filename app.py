@@ -9,7 +9,7 @@ import threading
 import json
 import os
 from dotenv import load_dotenv
-from timetable_generator import TimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, Teacher as GenTeacher, StudentGroup as GenStudentGroup
+from timetable_generator import MultiGroupTimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, StudentGroup as GenStudentGroup
 
 load_dotenv()
 
@@ -113,6 +113,7 @@ class Timetable(db.Model):
     classroom_id = db.Column(db.Integer, db.ForeignKey('classroom.id'), nullable=False)
     time_slot_id = db.Column(db.Integer, db.ForeignKey('time_slot.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    student_group_id = db.Column(db.Integer, db.ForeignKey('student_group.id'), nullable=False)
     semester = db.Column(db.String(20), nullable=False)
     academic_year = db.Column(db.String(10), nullable=False)
     
@@ -121,13 +122,21 @@ class Timetable(db.Model):
     classroom = db.relationship('Classroom', backref='timetable_entries')
     time_slot = db.relationship('TimeSlot', backref='timetable_entries')
     teacher = db.relationship('User', backref='teaching_schedule')
+    student_group = db.relationship('StudentGroup', backref='timetables')
     
-    # Constraints - Unique constraint to prevent double booking
+    # Constraints - Multi-group timetable with global resource constraints
     __table_args__ = (
+        # Group-specific: No double-booking within the same group
+        db.UniqueConstraint('student_group_id', 'classroom_id', 'time_slot_id', 'semester', 'academic_year', 
+                           name='unique_group_classroom_time'),
+        db.UniqueConstraint('student_group_id', 'teacher_id', 'time_slot_id', 'semester', 'academic_year', 
+                           name='unique_group_teacher_time'),
+        # Global: No classroom conflicts across groups
         db.UniqueConstraint('classroom_id', 'time_slot_id', 'semester', 'academic_year', 
-                           name='unique_classroom_time_slot'),
+                           name='unique_global_classroom_time'),
+        # Global: No teacher conflicts across groups
         db.UniqueConstraint('teacher_id', 'time_slot_id', 'semester', 'academic_year', 
-                           name='unique_teacher_time_slot'),
+                           name='unique_global_teacher_time'),
     )
 
 class StudentGroup(db.Model):
@@ -538,6 +547,7 @@ def admin_timetable():
         classroom_filter = request.args.get('classroom', '')
         semester_filter = request.args.get('semester', '')
         time_slot_filter = request.args.get('time_slot', '')
+        group_filter = request.args.get('group', '')
         
         # Build query with filters
         query = Timetable.query
@@ -564,11 +574,15 @@ def admin_timetable():
                 TimeSlot.end_time == end_time
             )
         
+        if group_filter:
+            query = query.filter(Timetable.student_group_id == group_filter)
+        
         timetables = query.all()
         courses = Course.query.all()
         classrooms = Classroom.query.all()
         teachers = User.query.filter_by(role='faculty').all()
         time_slots = TimeSlot.query.all()
+        student_groups = StudentGroup.query.all()
         
         # Ensure all relationships are loaded
         for tt in timetables:
@@ -594,7 +608,57 @@ def admin_timetable():
                          courses=courses,
                          classrooms=classrooms,
                          teachers=teachers,
-                         time_slots=time_slots)
+                         time_slots=time_slots,
+                         student_groups=student_groups)
+
+@app.route('/admin/group_timetable/<int:group_id>')
+@login_required
+def admin_group_timetable(group_id):
+    """Show timetable for a specific student group"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get the student group
+        student_group = StudentGroup.query.get_or_404(group_id)
+        
+        # Get timetables for this specific group
+        timetables = Timetable.query.join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).filter(
+            Timetable.student_group_id == group_id
+        ).order_by(
+            db.case(
+                (TimeSlot.day == 'Monday', 1),
+                (TimeSlot.day == 'Tuesday', 2),
+                (TimeSlot.day == 'Wednesday', 3),
+                (TimeSlot.day == 'Thursday', 4),
+                (TimeSlot.day == 'Friday', 5),
+                else_=6
+            ),
+            TimeSlot.start_time
+        ).all()
+        
+        # Ensure all relationships are loaded
+        for tt in timetables:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+            if not hasattr(tt, 'teacher') or not tt.teacher:
+                tt.teacher = User.query.get(tt.teacher_id)
+            if not hasattr(tt, 'student_group') or not tt.student_group:
+                tt.student_group = StudentGroup.query.get(tt.student_group_id)
+                
+    except Exception as e:
+        flash(f'Error loading timetable data: {str(e)}', 'error')
+        timetables = []
+        student_group = None
+    
+    return render_template('admin/group_timetable.html', 
+                         timetables=timetables,
+                         student_group=student_group)
 
 @app.route('/admin/export_timetable')
 @login_required
@@ -999,16 +1063,25 @@ def admin_student_groups():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    # Load groups with relationships
-    groups = StudentGroup.query.all()
+    # Load groups with relationships using proper SQLAlchemy joins
+    groups = db.session.query(StudentGroup).options(
+        db.joinedload(StudentGroup.students),
+        db.joinedload(StudentGroup.courses)
+    ).all()
     
-    # Ensure relationships are loaded for each group
+    # Ensure relationships are properly loaded
     for group in groups:
-        if not hasattr(group, 'students') or not group.students:
+        # Load students if not already loaded
+        if not hasattr(group, '_students_loaded') or not group._students_loaded:
             group.students = User.query.filter_by(group_id=group.id, role='student').all()
-        if not hasattr(group, 'courses') or not group.courses:
+            group._students_loaded = True
+        
+        # Load courses if not already loaded
+        if not hasattr(group, '_courses_loaded') or not group._courses_loaded:
             group_courses = StudentGroupCourse.query.filter_by(student_group_id=group.id).all()
-            group.courses = [Course.query.get(sgc.course_id) for sgc in group_courses if Course.query.get(sgc.course_id)]
+            # Create a custom attribute for courses instead of setting the relationship
+            group.course_list = [Course.query.get(sgc.course_id) for sgc in group_courses if Course.query.get(sgc.course_id)]
+            group._courses_loaded = True
     
     return render_template('admin/student_groups.html', groups=groups)
 
@@ -1298,9 +1371,15 @@ def student_timetable():
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
+    if not current_user.group_id:
+        flash('You are not assigned to any student group', 'warning')
+        return redirect(url_for('student_dashboard'))
+    
     try:
-        # Get student's full timetable (simplified - showing all timetables for demo)
-        timetables = Timetable.query.join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).order_by(
+        # Get student's group timetable
+        timetables = Timetable.query.join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).filter(
+            Timetable.student_group_id == current_user.group_id
+        ).order_by(
             db.case(
                 (TimeSlot.day == 'Monday', 1),
                 (TimeSlot.day == 'Tuesday', 2),
@@ -1312,6 +1391,9 @@ def student_timetable():
             TimeSlot.start_time
         ).all()
         
+        # Get student's group info
+        student_group = StudentGroup.query.get(current_user.group_id)
+        
         # Ensure all relationships are loaded
         for tt in timetables:
             if not hasattr(tt, 'time_slot') or not tt.time_slot:
@@ -1322,12 +1404,17 @@ def student_timetable():
                 tt.classroom = Classroom.query.get(tt.classroom_id)
             if not hasattr(tt, 'teacher') or not tt.teacher:
                 tt.teacher = User.query.get(tt.teacher_id)
+            if not hasattr(tt, 'student_group') or not tt.student_group:
+                tt.student_group = StudentGroup.query.get(tt.student_group_id)
                 
     except Exception as e:
         flash(f'Error loading timetable data: {str(e)}', 'error')
         timetables = []
+        student_group = None
     
-    return render_template('student/timetable.html', timetables=timetables)
+    return render_template('student/timetable.html', 
+                         timetables=timetables,
+                         student_group=student_group)
 
 @app.route('/student/attendance_history')
 @login_required
@@ -2112,24 +2199,28 @@ def init_db():
             classroom2 = Classroom.query.filter_by(room_number='205').first()
             time_slot1 = TimeSlot.query.filter_by(day='Monday', start_time='09:00').first()
             time_slot2 = TimeSlot.query.filter_by(day='Tuesday', start_time='09:00').first()
+            group1 = StudentGroup.query.filter_by(name='CS-2024-1').first()
+            group2 = StudentGroup.query.filter_by(name='MATH-2024-1').first()
             
-            if all([course1, faculty1, classroom1, time_slot1]):
+            if all([course1, faculty1, classroom1, time_slot1, group1]):
                 timetable1 = Timetable(
                     course_id=course1.id,
                     teacher_id=faculty1.id,
                     classroom_id=classroom1.id,
                     time_slot_id=time_slot1.id,
+                    student_group_id=group1.id,
                     semester='Fall 2024',
                     academic_year='2024-2025'
                 )
                 db.session.add(timetable1)
             
-            if all([course2, faculty2, classroom2, time_slot2]):
+            if all([course2, faculty2, classroom2, time_slot2, group2]):
                 timetable2 = Timetable(
                     course_id=course2.id,
                     teacher_id=faculty2.id,
                     classroom_id=classroom2.id,
                     time_slot_id=time_slot2.id,
+                    student_group_id=group2.id,
                     semester='Fall 2024',
                     academic_year='2024-2025'
                 )
@@ -2239,47 +2330,53 @@ def admin_generate_timetables():
     if request.method == 'POST':
         try:
             # Initialize timetable generator
-            generator = TimetableGenerator()
+            generator = MultiGroupTimetableGenerator()
             
             # Get all time slots
             time_slots = TimeSlot.query.all()
-            gen_time_slots = [GenTimeSlot(
-                id=ts.id, day=ts.day, start_time=ts.start_time, end_time=ts.end_time
-            ) for ts in time_slots]
+            gen_time_slots = []
+            for ts in time_slots:
+                gen_time_slots.append(type('TimeSlot', (), {
+                    'id': ts.id, 'day': ts.day, 'start_time': ts.start_time, 
+                    'end_time': ts.end_time, 'break_type': ts.break_type
+                })())
             generator.add_time_slots(gen_time_slots)
             
             # Get all courses
             courses = Course.query.all()
-            gen_courses = [GenCourse(
-                id=c.id, code=c.code, name=c.name, periods_per_week=c.periods_per_week,
-                department=c.department, required_equipment=c.required_equipment or '',
-                min_capacity=c.min_capacity, max_students=c.max_students
-            ) for c in courses]
+            gen_courses = []
+            for c in courses:
+                gen_courses.append(type('Course', (), {
+                    'id': c.id, 'code': c.code, 'name': c.name, 
+                    'periods_per_week': c.periods_per_week, 'department': c.department,
+                    'subject_area': c.subject_area, 'required_equipment': c.required_equipment or '',
+                    'min_capacity': c.min_capacity
+                })())
             generator.add_courses(gen_courses)
             
             # Get all classrooms
             classrooms = Classroom.query.all()
-            gen_classrooms = [GenClassroom(
-                id=c.id, room_number=c.room_number, capacity=c.capacity,
-                room_type=c.room_type, equipment=c.equipment or '', building=c.building
-            ) for c in classrooms]
+            gen_classrooms = []
+            for c in classrooms:
+                gen_classrooms.append(type('Classroom', (), {
+                    'id': c.id, 'room_number': c.room_number, 'capacity': c.capacity,
+                    'building': c.building, 'room_type': c.room_type, 'equipment': c.equipment or ''
+                })())
             generator.add_classrooms(gen_classrooms)
             
-            # Get all teachers with availability (simplified - all available)
+            # Get all teachers
             teachers = User.query.filter_by(role='faculty').all()
             gen_teachers = []
             for teacher in teachers:
                 # Create default availability for all time slots
-                availability = {}
+                availability = set()
                 for ts in time_slots:
-                    if ts.day not in availability:
-                        availability[ts.day] = []
-                    availability[ts.day].append(ts.start_time)
+                    availability.add((ts.day, ts.start_time))
                 
-                gen_teachers.append(GenTeacher(
-                    id=teacher.id, name=teacher.name, department=teacher.department,
-                    availability=availability
-                ))
+                gen_teachers.append(type('Teacher', (), {
+                    'id': teacher.id, 'name': teacher.name, 'department': teacher.department,
+                    'availability': availability
+                })())
             generator.add_teachers(gen_teachers)
             
             # Get all student groups with their courses
@@ -2293,24 +2390,19 @@ def admin_generate_timetables():
                         group_courses.append(GenCourse(
                             id=course.id, code=course.code, name=course.name,
                             periods_per_week=course.periods_per_week,
-                            department=course.department, required_equipment=course.required_equipment or '',
+                            department=course.department, subject_area=course.subject_area,
+                            required_equipment=course.required_equipment or '',
                             min_capacity=course.min_capacity, max_students=course.max_students
                         ))
                 
                 gen_student_groups.append(GenStudentGroup(
                     id=group.id, name=group.name, department=group.department,
-                    courses=group_courses
+                    year=group.year, semester=group.semester
                 ))
             generator.add_student_groups(gen_student_groups)
             
-            # Check feasibility before generation
-            feasibility = generator.check_feasibility()
-            if not feasibility['feasible']:
-                flash(f'❌ Timetable generation not possible: {feasibility["reason"]}', 'error')
-                return redirect(url_for('admin_generate_timetables'))
-            
-            # Generate timetables
-            print("🔄 Starting timetable generation...")
+            # Generate timetables for all groups
+            print("🔄 Starting multi-group timetable generation...")
             generated_timetables = generator.generate_timetables()
             
             # Check if generation was successful
@@ -2318,7 +2410,15 @@ def admin_generate_timetables():
                 flash('❌ No timetables could be generated. The system may be over-constrained.', 'error')
                 return redirect(url_for('admin_generate_timetables'))
             
-            print(f"✅ Generated {len(generated_timetables)} group timetables")
+            print(f"✅ Generated timetables for {len(generated_timetables)} groups")
+            
+            # Validate global constraints
+            if not generator.validate_constraints():
+                flash('❌ Generated timetables violate global constraints. Please try again.', 'error')
+                return redirect(url_for('admin_generate_timetables'))
+            
+            # Print summary
+            generator.print_summary()
             
             # Save generated timetables to database
             # Check if user wants to clear existing timetables
@@ -2384,6 +2484,7 @@ def admin_generate_timetables():
                             teacher_id=entry.teacher_id,
                             classroom_id=entry.classroom_id,
                             time_slot_id=entry.time_slot_id,
+                            student_group_id=entry.student_group_id,
                             semester='Fall 2024',
                             academic_year='2024-25'
                         )
@@ -2395,13 +2496,7 @@ def admin_generate_timetables():
             db.session.commit()
             print(f"✅ Saved {timetables_added} timetable entries to database")
             
-            # Get statistics
-            stats = generator.get_statistics()
-            
-            flash(f'Timetables generated successfully! {stats["total_periods"]} periods scheduled for {stats["total_groups"]} groups.', 'success')
-            
-            if generator.conflicts:
-                flash(f'⚠️ {len(generator.conflicts)} conflicts detected. Please review manually.', 'warning')
+            flash(f'Timetables generated successfully! {timetables_added} entries scheduled for {len(generated_timetables)} groups.', 'success')
             
             return redirect(url_for('admin_timetable'))
             
@@ -2417,6 +2512,60 @@ def admin_generate_timetables():
                          existing_timetables=Timetable.query.all(),
                          expected_periods=sum(c.periods_per_week for c in Course.query.all()))
 
+@app.route('/faculty/timetable')
+@login_required
+def faculty_timetable():
+    """Show compiled timetable for faculty member across all groups"""
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get all timetables for this faculty member
+        faculty_timetables = Timetable.query.filter_by(teacher_id=current_user.id).all()
+        
+        # Group by day and time for better display
+        timetable_by_day = {}
+        for entry in faculty_timetables:
+            # Get the time slot information
+            time_slot = TimeSlot.query.get(entry.time_slot_id)
+            if not time_slot:
+                continue
+                
+            day = time_slot.day
+            if day not in timetable_by_day:
+                timetable_by_day[day] = []
+            
+            # Get additional information
+            course = Course.query.get(entry.course_id)
+            classroom = Classroom.query.get(entry.classroom_id)
+            student_group = StudentGroup.query.get(entry.student_group_id)
+            
+            timetable_by_day[day].append({
+                'id': entry.id,
+                'course_code': course.code if course else 'Unknown',
+                'course_name': course.name if course else 'Unknown',
+                'classroom': classroom.room_number if classroom else 'Unknown',
+                'building': classroom.building if classroom else 'Unknown',
+                'start_time': time_slot.start_time,
+                'end_time': time_slot.end_time,
+                'student_group': student_group.name if student_group else 'Unknown',
+                'semester': entry.semester,
+                'academic_year': entry.academic_year
+            })
+        
+        # Sort each day by start time
+        for day in timetable_by_day:
+            timetable_by_day[day].sort(key=lambda x: x['start_time'])
+        
+        return render_template('faculty/timetable.html', 
+                             timetable_by_day=timetable_by_day,
+                             faculty_name=current_user.name)
+                             
+    except Exception as e:
+        flash(f'Error loading timetable: {str(e)}', 'error')
+        return redirect(url_for('faculty_dashboard'))
+
 @app.route('/admin/check_timetable_feasibility')
 @login_required
 def admin_check_timetable_feasibility():
@@ -2426,7 +2575,7 @@ def admin_check_timetable_feasibility():
     
     try:
         # Initialize timetable generator
-        generator = TimetableGenerator()
+        generator = MultiGroupTimetableGenerator()
         
         # Get all time slots
         time_slots = TimeSlot.query.all()
@@ -2439,7 +2588,8 @@ def admin_check_timetable_feasibility():
         courses = Course.query.all()
         gen_courses = [GenCourse(
             id=c.id, code=c.code, name=c.name, periods_per_week=c.periods_per_week,
-            department=c.department, required_equipment=c.required_equipment or '',
+            department=c.department, subject_area=c.subject_area,
+            required_equipment=c.required_equipment or '',
             min_capacity=c.min_capacity, max_students=c.max_students
         ) for c in courses]
         generator.add_courses(gen_courses)
@@ -2461,25 +2611,41 @@ def admin_check_timetable_feasibility():
                     group_courses.append(GenCourse(
                         id=course.id, code=course.code, name=course.name,
                         periods_per_week=course.periods_per_week,
-                        department=course.department, required_equipment=course.required_equipment or '',
+                        department=course.department, subject_area=course.subject_area,
+                        required_equipment=course.required_equipment or '',
                         min_capacity=course.min_capacity, max_students=course.max_students
                     ))
             
             gen_student_groups.append(GenStudentGroup(
                 id=group.id, name=group.name, department=group.department,
-                courses=group_courses
+                year=group.year, semester=group.semester
             ))
         generator.add_student_groups(gen_student_groups)
         
-        # Check feasibility
-        feasibility = generator.check_feasibility()
+        # Generate timetables to check feasibility
+        generated_timetables = generator.generate_timetables()
         
-        # Add suggestions if not feasible
-        if not feasibility['feasible']:
-            suggestions = generator.get_constraint_suggestions()
-            feasibility['suggestions'] = suggestions
+        if not generated_timetables:
+            return jsonify({
+                'feasible': False,
+                'reason': 'Failed to generate timetables - insufficient resources or conflicts'
+            })
         
-        return jsonify(feasibility)
+        # Validate constraints
+        constraints_valid = generator.validate_constraints()
+        
+        if constraints_valid:
+            return jsonify({
+                'feasible': True,
+                'reason': 'Timetable generation successful with all constraints satisfied',
+                'groups': len(generated_timetables),
+                'total_entries': sum(len(timetable) for timetable in generated_timetables.values())
+            })
+        else:
+            return jsonify({
+                'feasible': False,
+                'reason': 'Timetable generated but constraint violations detected'
+            })
         
     except Exception as e:
         return jsonify({
@@ -2643,7 +2809,7 @@ def student_my_timetable():
     ).join(
         TimeSlot, Timetable.time_slot_id == TimeSlot.id
     ).filter(
-        Course.department == current_user.department
+        Timetable.student_group_id == current_user.group_id
     ).order_by(
         TimeSlot.day, TimeSlot.start_time
     ).all()

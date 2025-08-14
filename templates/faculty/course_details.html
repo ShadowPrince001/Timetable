@@ -112,7 +112,7 @@
                                 <td>{{ timetable.classroom.building }}</td>
                                 <td>{{ timetable.semester }}</td>
                                 <td>
-                                    <a href="{{ url_for('take_attendance', timetable_id=timetable.id) }}" class="btn btn-sm btn-success">
+                                    <a href="{{ url_for('faculty_take_attendance', timetable_id=timetable.id) }}" class="btn btn-sm btn-success">
                                         <i class="fas fa-clipboard-check me-1"></i>Take Attendance
                                     </a>
                                 </td>

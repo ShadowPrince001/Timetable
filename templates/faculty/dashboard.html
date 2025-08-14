@@ -43,7 +43,7 @@
                                 <td>{{ class.classroom.room_number }}</td>
                                 <td>{{ class.course.max_students }}</td>
                                 <td>
-                                    <a href="{{ url_for('take_attendance', timetable_id=class.id) }}" class="btn btn-primary btn-sm">
+                                    <a href="{{ url_for('faculty_take_attendance', timetable_id=class.id) }}" class="btn btn-primary btn-sm">
                                         <i class="fas fa-clipboard-check me-1"></i>Take Attendance
                                     </a>
                                 </td>
@@ -73,6 +73,9 @@
                     <i class="fas fa-book me-2"></i>My Courses
                 </h6>
                 <div class="mt-2">
+                    <a href="{{ url_for('faculty_timetable') }}" class="btn btn-outline-primary btn-sm me-2">
+                        <i class="fas fa-calendar-alt me-1"></i>My Complete Timetable
+                    </a>
                     <a href="{{ url_for('faculty_all_attendance') }}" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-chart-bar me-1"></i>View All Attendance
                     </a>
