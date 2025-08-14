@@ -5,7 +5,7 @@ Generates separate timetables for each student group while ensuring
 global constraints prevent conflicts between groups.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set, Tuple
 from collections import defaultdict
 import random
@@ -44,7 +44,7 @@ class Teacher:
     id: int
     name: str
     department: str
-    availability: Set[Tuple[str, str]] = None  # Set of (day, time) tuples
+    availability: Optional[Set[Tuple[str, str]]] = None  # None means always available
 
 @dataclass
 class StudentGroup:
@@ -83,6 +83,7 @@ class MultiGroupTimetableGenerator:
         
     def add_time_slots(self, time_slots: List[TimeSlot]):
         """Add available time slots"""
+        print(f"Adding {len(time_slots)} time slots: {[f'{ts.day} {ts.start_time}-{ts.end_time}' for ts in time_slots]}")
         self.time_slots = time_slots
         
     def add_courses(self, courses: List[Course]):
@@ -205,72 +206,93 @@ class MultiGroupTimetableGenerator:
         
         for slot in shuffled_slots:
             slot_key = (slot.day, slot.start_time)
-            
+            print(f"Trying slot {slot.day} {slot.start_time}-{slot.end_time} for course {course.code} and group {group.name}")
+
             # Check if slot is used by this group
             if slot_key in group_used_slots:
+                print(f"  Skipped: Slot already used by group {group.name}")
                 continue
                 
             # Check global classroom conflict
             if slot_key in self.global_classroom_usage:
+                print(f"  Skipped: Classroom conflict at {slot_key}")
                 continue
                 
             # Check global teacher conflict
             if slot_key in self.global_teacher_usage:
+                print(f"  Skipped: Teacher conflict at {slot_key}")
                 continue
                 
             # Find available classroom
             classroom = self._find_available_classroom(course, slot)
             if not classroom:
+                print(f"  Skipped: No suitable classroom available")
                 continue
                 
             # Find available teacher
             teacher = self._find_available_teacher(course, slot)
             if not teacher:
+                print(f"  Skipped: No suitable teacher available")
                 continue
                 
+            print(f"  Selected slot {slot.day} {slot.start_time}-{slot.end_time} for course {course.code} and group {group.name}")
             return slot, classroom, teacher
-        
+
+        print(f"⚠️ No available slot found for course {course.code} and group {group.name}")
         return None, None, None
     
     def _find_available_classroom(self, course: Course, slot: TimeSlot) -> Optional[Classroom]:
         """Find available classroom for a course and time slot"""
         slot_key = (slot.day, slot.start_time)
-        
-        # Filter classrooms by capacity and equipment requirements
-        suitable_classrooms = [
-            c for c in self.classrooms
-            if c.capacity >= course.min_capacity and
-            (not course.required_equipment or course.required_equipment in c.equipment)
-        ]
-        
-        # Shuffle for better distribution
+        print(f"    All classrooms: {[f'{c.room_number} (cap={c.capacity}, eq={c.equipment})' for c in self.classrooms]}")
+        print(f"    Course {course.code} min_capacity={course.min_capacity}, required_equipment='{course.required_equipment}'")
+        suitable_classrooms = []
+        for c in self.classrooms:
+            cap_ok = c.capacity >= course.min_capacity
+            eq_ok = (
+                not course.required_equipment or
+                any(
+                    eq.strip().lower() == course.required_equipment.strip().lower()
+                    for eq in c.equipment.split(',')
+                )
+            )
+            print(f"      Checking {c.room_number}: capacity={c.capacity} (ok? {cap_ok}), equipment='{c.equipment}' (ok? {eq_ok})")
+            if cap_ok and eq_ok:
+                suitable_classrooms.append(c)
+        print(f"    {len(suitable_classrooms)} suitable classrooms for course {course.code} at {slot.day} {slot.start_time}-{slot.end_time}: {[c.room_number for c in suitable_classrooms]}")
         random.shuffle(suitable_classrooms)
-        
         for classroom in suitable_classrooms:
-            # Check if classroom is available at this time globally
-            if slot_key not in self.global_classroom_usage:
-                return classroom
-        
+            if self.global_classroom_usage.get(slot_key) == classroom.id:
+                print(f"      Classroom {classroom.room_number} is NOT available for slot {slot_key} (already booked)")
+                continue
+            print(f"      Classroom {classroom.room_number} is available for slot {slot_key}")
+            return classroom
+        print(f"    No classroom available for course {course.code} at {slot.day} {slot.start_time}-{slot.end_time}")
         return None
     
     def _find_available_teacher(self, course: Course, slot: TimeSlot) -> Optional[Teacher]:
         """Find available teacher for a course and time slot"""
         slot_key = (slot.day, slot.start_time)
-        
-        # Filter teachers by department
-        suitable_teachers = [
-            t for t in self.teachers
-            if t.department == course.department
-        ]
-        
-        # Shuffle for better distribution
+        print(f"    All teachers: {[f'{t.name} (dept={t.department})' for t in self.teachers]}")
+        print(f"    Course {course.code} department={course.department}")
+        suitable_teachers = []
+        for t in self.teachers:
+            dept_ok = t.department == course.department
+            # If teacher has availability, check if slot is in it; if None, assume always available
+            avail_ok = (t.availability is None or slot_key in t.availability)
+            print(f"      Checking {t.name}: department={t.department} (ok? {dept_ok}), available at {slot_key}? {avail_ok}")
+            if dept_ok and avail_ok:
+                suitable_teachers.append(t)
+        print(f"    {len(suitable_teachers)} suitable teachers for course {course.code} at {slot.day} {slot.start_time}-{slot.end_time}: {[t.name for t in suitable_teachers]}")
         random.shuffle(suitable_teachers)
-        
         for teacher in suitable_teachers:
-            # Check if teacher is available at this time globally
-            if slot_key not in self.global_teacher_usage:
-                return teacher
-        
+            # Check if teacher is already used at this slot globally
+            if self.global_teacher_usage.get(slot_key) == teacher.id:
+                print(f"      Teacher {teacher.name} is NOT available for slot {slot_key} (already booked)")
+                continue
+            print(f"      Teacher {teacher.name} is available for slot {slot_key}")
+            return teacher
+        print(f"    No teacher available for course {course.code} at {slot.day} {slot.start_time}-{slot.end_time}")
         return None
     
     def _update_global_usage(self, group_timetable: List[TimetableEntry]):
@@ -359,7 +381,8 @@ class MultiGroupTimetableGenerator:
         for group_timetable in self.generated_timetables.values():
             for entry in group_timetable:
                 faculty_workload[entry.teacher_name] += 1
-        
-        print(f"\n👨‍🏫 Faculty Workload:")
+
+        print("-" * 50)
+        print("\nFaculty Workload:")
         for teacher, count in sorted(faculty_workload.items(), key=lambda x: x[1], reverse=True):
             print(f"   • {teacher}: {count} classes")
