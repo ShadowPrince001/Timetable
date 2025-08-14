@@ -13,6 +13,53 @@
     </div>
 </div>
 
+<!-- Quick Actions for Individual Timetables -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-eye me-2"></i>View Individual Timetables
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-users me-2"></i>Student Group Timetables
+                        </h6>
+                        <div class="row">
+                            {% for group in student_groups %}
+                            <div class="col-md-6 mb-2">
+                                <a href="{{ url_for('admin_group_timetable', group_id=group.id) }}" 
+                                   class="btn btn-outline-primary btn-sm btn-block">
+                                    <i class="fas fa-calendar-alt me-1"></i>{{ group.name }}
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-success mb-3">
+                            <i class="fas fa-user-tie me-2"></i>Teacher Timetables
+                        </h6>
+                        <div class="row">
+                            {% for teacher in teachers %}
+                            <div class="col-md-6 mb-2">
+                                <a href="{{ url_for('admin_teacher_timetable', teacher_id=teacher.id) }}" 
+                                   class="btn btn-outline-success btn-sm btn-block">
+                                    <i class="fas fa-calendar-alt me-1"></i>{{ teacher.name }}
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row mb-4">
     <div class="col-12">
         <div class="card shadow">

@@ -121,6 +121,11 @@
                                 </td>
                                 <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                                 <td>
+                                    {% if user.role == 'faculty' %}
+                                    <a href="{{ url_for('admin_teacher_timetable', teacher_id=user.id) }}" class="btn btn-sm btn-outline-success" title="View Timetable">
+                                        <i class="fas fa-calendar-alt"></i>
+                                    </a>
+                                    {% endif %}
                                     <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Edit User">
                                         <i class="fas fa-edit"></i>
                                     </a>

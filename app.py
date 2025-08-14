@@ -632,19 +632,17 @@ def admin_timetable():
 @app.route('/admin/group_timetable/<int:group_id>')
 @login_required
 def admin_group_timetable(group_id):
-    """Show timetable for a specific student group"""
+    """Show individual timetable for a specific student group"""
     if current_user.role != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
     try:
-        # Get the student group
+        # Get the specific student group
         student_group = StudentGroup.query.get_or_404(group_id)
         
-        # Get timetables for this specific group
-        timetables = Timetable.query.join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).filter(
-            Timetable.student_group_id == group_id
-        ).order_by(
+        # Get all timetables for this group
+        timetables = Timetable.query.filter_by(student_group_id=group_id).order_by(
             db.case(
                 (TimeSlot.day == 'Monday', 1),
                 (TimeSlot.day == 'Tuesday', 2),
@@ -668,15 +666,74 @@ def admin_group_timetable(group_id):
                 tt.teacher = User.query.get(tt.teacher_id)
             if not hasattr(tt, 'student_group') or not tt.student_group:
                 tt.student_group = StudentGroup.query.get(tt.student_group_id)
-                
+        
+        # Get all available time slots for the grid view
+        time_slots = TimeSlot.query.order_by(TimeSlot.start_time).all()
+        
+        # Get all days
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        
+        return render_template('admin/group_timetable.html',
+                             timetables=timetables,
+                             student_group=student_group,
+                             time_slots=time_slots,
+                             days=days)
+                             
     except Exception as e:
-        flash(f'Error loading timetable data: {str(e)}', 'error')
-        timetables = []
-        student_group = None
+        flash(f'Error loading group timetable: {str(e)}', 'error')
+        return redirect(url_for('admin_timetable'))
+
+@app.route('/admin/teacher_timetable/<int:teacher_id>')
+@login_required
+def admin_teacher_timetable(teacher_id):
+    """Show individual timetable for a specific teacher"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
     
-    return render_template('admin/group_timetable.html', 
-                         timetables=timetables,
-                         student_group=student_group)
+    try:
+        # Get the specific teacher
+        teacher = User.query.filter_by(id=teacher_id, role='faculty').first_or_404()
+        
+        # Get all timetables for this teacher
+        timetables = Timetable.query.filter_by(teacher_id=teacher_id).order_by(
+            db.case(
+                (TimeSlot.day == 'Monday', 1),
+                (TimeSlot.day == 'Tuesday', 2),
+                (TimeSlot.day == 'Wednesday', 3),
+                (TimeSlot.day == 'Thursday', 4),
+                (TimeSlot.day == 'Friday', 5),
+                else_=6
+            ),
+            TimeSlot.start_time
+        ).all()
+        
+        # Ensure all relationships are loaded
+        for tt in timetables:
+            if not hasattr(tt, 'time_slot') or not tt.time_slot:
+                tt.time_slot = TimeSlot.query.get(tt.time_slot_id)
+            if not hasattr(tt, 'course') or not tt.course:
+                tt.course = Course.query.get(tt.course_id)
+            if not hasattr(tt, 'classroom') or not tt.classroom:
+                tt.classroom = Classroom.query.get(tt.classroom_id)
+            if not hasattr(tt, 'student_group') or not tt.student_group:
+                tt.student_group = StudentGroup.query.get(tt.student_group_id)
+        
+        # Get all available time slots for the grid view
+        time_slots = TimeSlot.query.order_by(TimeSlot.start_time).all()
+        
+        # Get all days
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        
+        return render_template('admin/teacher_timetable.html',
+                             timetables=timetables,
+                             teacher=teacher,
+                             time_slots=time_slots,
+                             days=days)
+                             
+    except Exception as e:
+        flash(f'Error loading teacher timetable: {str(e)}', 'error')
+        return redirect(url_for('admin_timetable'))
 
 @app.route('/admin/export_timetable')
 @login_required
