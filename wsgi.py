@@ -19,12 +19,7 @@ with app.app_context():
 
         # Optional: seed demo data if requested by env var
         if os.getenv('SEED_DEMO', '0') == '1':
-            try:
-                from seed_demo_data import seed_demo_data
-                seed_demo_data()
-                print("✅ Demo data seeding completed")
-            except Exception as e:
-                print(f"⚠️ Demo data seeding failed: {e}")
+            print("ℹ️ Demo data seeding not available (module removed)")
             
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
