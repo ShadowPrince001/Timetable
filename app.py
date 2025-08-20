@@ -1311,7 +1311,7 @@ def admin_manage_group_courses(group_id):
                          current_course_ids=current_course_ids)
 
 # Faculty Routes
-@app.route('/faculty/take_attendance/<int:timetable_id>')
+@app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
 @login_required
 def take_attendance(timetable_id):
     if current_user.role != 'faculty':
@@ -1352,7 +1352,7 @@ def take_attendance(timetable_id):
         flash(f'Error loading attendance page: {str(e)}', 'error')
         return redirect(url_for('faculty_dashboard'))
 
-@app.route('/faculty/save_attendance', methods=['POST'])
+@app.route('/faculty/save_attendance', methods=['POST'], endpoint='faculty_save_attendance')
 @login_required
 def save_attendance():
     if current_user.role != 'faculty':
