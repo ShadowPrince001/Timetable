@@ -22,7 +22,7 @@
                 </h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('save_attendance') }}">
+                <form method="POST" action="{{ url_for('faculty_save_attendance') }}">
                     <input type="hidden" name="timetable_id" value="{{ timetable.id }}">
                     <input type="hidden" name="date" value="{{ today.strftime('%Y-%m-%d') }}">
                     
