@@ -134,6 +134,17 @@ def init_sample_data():
             'Sneha Verma', 'Vikram Kumar', 'Meera Reddy', 'Karthik Gupta', 'Ritu Malhotra'
         ]
         
+        # Create the specific demo student account first
+        demo_student = User(
+            username='student',
+            email='student@institution.com',
+            password_hash=generate_password_hash('student123'),
+            role='student',
+            name='Arjun Sharma',
+            department='Computer Science'
+        )
+        db.session.add(demo_student)
+        
         for i, name in enumerate(student_names):
             student = User(
                 username=f'student_{i+1}',
@@ -150,53 +161,53 @@ def init_sample_data():
         # Create engineering courses
         courses_data = [
             # Computer Science Courses
-            {'code': 'CS101', 'name': 'Introduction to Computer Science', 'credits': 3, 'department': 'Computer Science', 'teacher_id': 2, 'max_students': 60},
-            {'code': 'CS201', 'name': 'Data Structures and Algorithms', 'credits': 4, 'department': 'Computer Science', 'teacher_id': 2, 'max_students': 50},
-            {'code': 'CS301', 'name': 'Database Management Systems', 'credits': 3, 'department': 'Computer Science', 'teacher_id': 3, 'max_students': 45},
-            {'code': 'CS401', 'name': 'Computer Networks', 'credits': 3, 'department': 'Computer Science', 'teacher_id': 2, 'max_students': 40},
-            {'code': 'CS501', 'name': 'Software Engineering', 'credits': 4, 'department': 'Computer Science', 'teacher_id': 3, 'max_students': 35},
-            {'code': 'CS601', 'name': 'Artificial Intelligence', 'credits': 3, 'department': 'Computer Science', 'teacher_id': 2, 'max_students': 30},
+            {'code': 'CS101', 'name': 'Introduction to Computer Science', 'credits': 3, 'department': 'Computer Science', 'max_students': 60, 'subject_area': 'Programming'},
+            {'code': 'CS201', 'name': 'Data Structures and Algorithms', 'credits': 4, 'department': 'Computer Science', 'max_students': 50, 'subject_area': 'Programming'},
+            {'code': 'CS301', 'name': 'Database Management Systems', 'credits': 3, 'department': 'Computer Science', 'max_students': 45, 'subject_area': 'Database'},
+            {'code': 'CS401', 'name': 'Computer Networks', 'credits': 3, 'department': 'Computer Science', 'max_students': 40, 'subject_area': 'Networking'},
+            {'code': 'CS501', 'name': 'Software Engineering', 'credits': 4, 'department': 'Computer Science', 'max_students': 35, 'subject_area': 'Software Development'},
+            {'code': 'CS601', 'name': 'Artificial Intelligence', 'credits': 3, 'department': 'Computer Science', 'max_students': 30, 'subject_area': 'AI/ML'},
             
             # Electrical Engineering Courses
-            {'code': 'EE101', 'name': 'Basic Electrical Engineering', 'credits': 3, 'department': 'Electrical Engineering', 'teacher_id': 4, 'max_students': 55},
-            {'code': 'EE201', 'name': 'Digital Electronics', 'credits': 4, 'department': 'Electrical Engineering', 'teacher_id': 4, 'max_students': 45},
-            {'code': 'EE301', 'name': 'Power Systems', 'credits': 3, 'department': 'Electrical Engineering', 'teacher_id': 4, 'max_students': 40},
-            {'code': 'EE401', 'name': 'Control Systems', 'credits': 3, 'department': 'Electrical Engineering', 'teacher_id': 4, 'max_students': 35},
+            {'code': 'EE101', 'name': 'Basic Electrical Engineering', 'credits': 3, 'department': 'Electrical Engineering', 'max_students': 55, 'subject_area': 'Electrical Fundamentals'},
+            {'code': 'EE201', 'name': 'Digital Electronics', 'credits': 4, 'department': 'Electrical Engineering', 'max_students': 45, 'subject_area': 'Electronics'},
+            {'code': 'EE301', 'name': 'Power Systems', 'credits': 3, 'department': 'Electrical Engineering', 'max_students': 40, 'subject_area': 'Power Engineering'},
+            {'code': 'EE401', 'name': 'Control Systems', 'credits': 3, 'department': 'Electrical Engineering', 'max_students': 35, 'subject_area': 'Control Engineering'},
             
             # Mechanical Engineering Courses
-            {'code': 'ME101', 'name': 'Engineering Mechanics', 'credits': 3, 'department': 'Mechanical Engineering', 'teacher_id': 5, 'max_students': 60},
-            {'code': 'ME201', 'name': 'Thermodynamics', 'credits': 4, 'department': 'Mechanical Engineering', 'teacher_id': 5, 'max_students': 50},
-            {'code': 'ME301', 'name': 'Machine Design', 'credits': 3, 'department': 'Mechanical Engineering', 'teacher_id': 5, 'max_students': 45},
-            {'code': 'ME401', 'name': 'Fluid Mechanics', 'credits': 3, 'department': 'Mechanical Engineering', 'teacher_id': 5, 'max_students': 40},
+            {'code': 'ME101', 'name': 'Engineering Mechanics', 'credits': 3, 'department': 'Mechanical Engineering', 'max_students': 60, 'subject_area': 'Mechanics'},
+            {'code': 'ME201', 'name': 'Thermodynamics', 'credits': 4, 'department': 'Mechanical Engineering', 'max_students': 50, 'subject_area': 'Thermal Engineering'},
+            {'code': 'ME301', 'name': 'Machine Design', 'credits': 3, 'department': 'Mechanical Engineering', 'max_students': 45, 'subject_area': 'Design Engineering'},
+            {'code': 'ME401', 'name': 'Fluid Mechanics', 'credits': 3, 'department': 'Mechanical Engineering', 'max_students': 40, 'subject_area': 'Fluid Engineering'},
             
             # Civil Engineering Courses
-            {'code': 'CE101', 'name': 'Engineering Drawing', 'credits': 2, 'department': 'Civil Engineering', 'teacher_id': 6, 'max_students': 50},
-            {'code': 'CE201', 'name': 'Structural Analysis', 'credits': 4, 'department': 'Civil Engineering', 'teacher_id': 6, 'max_students': 45},
-            {'code': 'CE301', 'name': 'Concrete Technology', 'credits': 3, 'department': 'Civil Engineering', 'teacher_id': 6, 'max_students': 40},
-            {'code': 'CE401', 'name': 'Transportation Engineering', 'credits': 3, 'department': 'Civil Engineering', 'teacher_id': 6, 'max_students': 35},
+            {'code': 'CE101', 'name': 'Engineering Drawing', 'credits': 2, 'department': 'Civil Engineering', 'max_students': 50, 'subject_area': 'Technical Drawing'},
+            {'code': 'CE201', 'name': 'Structural Analysis', 'credits': 4, 'department': 'Civil Engineering', 'max_students': 45, 'subject_area': 'Structural Engineering'},
+            {'code': 'CE301', 'name': 'Concrete Technology', 'credits': 3, 'department': 'Civil Engineering', 'max_students': 40, 'subject_area': 'Construction Materials'},
+            {'code': 'CE401', 'name': 'Transportation Engineering', 'credits': 3, 'department': 'Civil Engineering', 'max_students': 35, 'subject_area': 'Transportation'},
             
             # Information Technology Courses
-            {'code': 'IT101', 'name': 'Programming Fundamentals', 'credits': 3, 'department': 'Information Technology', 'teacher_id': 7, 'max_students': 55},
-            {'code': 'IT201', 'name': 'Web Development', 'credits': 4, 'department': 'Information Technology', 'teacher_id': 7, 'max_students': 45},
-            {'code': 'IT301', 'name': 'Mobile App Development', 'credits': 3, 'department': 'Information Technology', 'teacher_id': 7, 'max_students': 40},
+            {'code': 'IT101', 'name': 'Programming Fundamentals', 'credits': 3, 'department': 'Information Technology', 'max_students': 55, 'subject_area': 'Programming'},
+            {'code': 'IT201', 'name': 'Web Development', 'credits': 4, 'department': 'Information Technology', 'max_students': 45, 'subject_area': 'Web Technologies'},
+            {'code': 'IT301', 'name': 'Mobile App Development', 'credits': 3, 'department': 'Information Technology', 'max_students': 40, 'subject_area': 'Mobile Development'},
             
             # Electronics & Communication Courses
-            {'code': 'EC101', 'name': 'Electronic Devices', 'credits': 3, 'department': 'Electronics & Communication', 'teacher_id': 8, 'max_students': 50},
-            {'code': 'EC201', 'name': 'Digital Communication', 'credits': 4, 'department': 'Electronics & Communication', 'teacher_id': 8, 'max_students': 45},
-            {'code': 'EC301', 'name': 'VLSI Design', 'credits': 3, 'department': 'Electronics & Communication', 'teacher_id': 8, 'max_students': 35},
+            {'code': 'EC101', 'name': 'Electronic Devices', 'credits': 3, 'department': 'Electronics & Communication', 'max_students': 50, 'subject_area': 'Electronics'},
+            {'code': 'EC201', 'name': 'Digital Communication', 'credits': 4, 'department': 'Electronics & Communication', 'max_students': 45, 'subject_area': 'Communication Systems'},
+            {'code': 'EC301', 'name': 'VLSI Design', 'credits': 3, 'department': 'Electronics & Communication', 'max_students': 35, 'subject_area': 'VLSI'},
             
             # Mathematics Courses
-            {'code': 'MA101', 'name': 'Engineering Mathematics I', 'credits': 3, 'department': 'Mathematics', 'teacher_id': 9, 'max_students': 80},
-            {'code': 'MA201', 'name': 'Engineering Mathematics II', 'credits': 3, 'department': 'Mathematics', 'teacher_id': 9, 'max_students': 75},
-            {'code': 'MA301', 'name': 'Linear Algebra', 'credits': 3, 'department': 'Mathematics', 'teacher_id': 9, 'max_students': 60},
+            {'code': 'MA101', 'name': 'Engineering Mathematics I', 'credits': 3, 'department': 'Mathematics', 'max_students': 80, 'subject_area': 'Mathematics'},
+            {'code': 'MA201', 'name': 'Engineering Mathematics II', 'credits': 3, 'department': 'Mathematics', 'max_students': 75, 'subject_area': 'Mathematics'},
+            {'code': 'MA301', 'name': 'Linear Algebra', 'credits': 3, 'department': 'Mathematics', 'max_students': 60, 'subject_area': 'Mathematics'},
             
             # Physics Courses
-            {'code': 'PH101', 'name': 'Engineering Physics', 'credits': 3, 'department': 'Physics', 'teacher_id': 10, 'max_students': 70},
-            {'code': 'PH201', 'name': 'Applied Physics', 'credits': 3, 'department': 'Physics', 'teacher_id': 10, 'max_students': 65},
+            {'code': 'PH101', 'name': 'Engineering Physics', 'credits': 3, 'department': 'Physics', 'max_students': 70, 'subject_area': 'Physics'},
+            {'code': 'PH201', 'name': 'Applied Physics', 'credits': 3, 'department': 'Physics', 'max_students': 65, 'subject_area': 'Physics'},
             
             # Chemistry Courses
-            {'code': 'CH101', 'name': 'Engineering Chemistry', 'credits': 3, 'department': 'Chemistry', 'teacher_id': 11, 'max_students': 70},
-            {'code': 'CH201', 'name': 'Applied Chemistry', 'credits': 3, 'department': 'Chemistry', 'teacher_id': 11, 'max_students': 65}
+            {'code': 'CH101', 'name': 'Engineering Chemistry', 'credits': 3, 'department': 'Chemistry', 'max_students': 70, 'subject_area': 'Chemistry'},
+            {'code': 'CH201', 'name': 'Applied Chemistry', 'credits': 3, 'department': 'Chemistry', 'max_students': 65, 'subject_area': 'Chemistry'}
         ]
         
         for course_data in courses_data:
@@ -235,44 +246,44 @@ def init_sample_data():
         days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
         time_slots_data = [
             # Monday
-            {'day': 'Monday', 'start_time': '09:00', 'end_time': '10:00'},
-            {'day': 'Monday', 'start_time': '10:00', 'end_time': '11:00'},
-            {'day': 'Monday', 'start_time': '11:15', 'end_time': '12:15'},  # Break 11:00-11:15
-            {'day': 'Monday', 'start_time': '12:15', 'end_time': '13:15'},
-            {'day': 'Monday', 'start_time': '14:00', 'end_time': '15:00'},  # Lunch 13:15-14:00
-            {'day': 'Monday', 'start_time': '15:00', 'end_time': '16:00'},
+            {'day': 'Monday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
+            {'day': 'Monday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
+            {'day': 'Monday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},  # Break 11:00-11:15
+            {'day': 'Monday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Monday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},  # Lunch 13:15-14:00
+            {'day': 'Monday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Tuesday
-            {'day': 'Tuesday', 'start_time': '09:00', 'end_time': '10:00'},
-            {'day': 'Tuesday', 'start_time': '10:00', 'end_time': '11:00'},
-            {'day': 'Tuesday', 'start_time': '11:15', 'end_time': '12:15'},
-            {'day': 'Tuesday', 'start_time': '12:15', 'end_time': '13:15'},
-            {'day': 'Tuesday', 'start_time': '14:00', 'end_time': '15:00'},
-            {'day': 'Tuesday', 'start_time': '15:00', 'end_time': '16:00'},
+            {'day': 'Tuesday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
+            {'day': 'Tuesday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
+            {'day': 'Tuesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
+            {'day': 'Tuesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Tuesday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
+            {'day': 'Tuesday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Wednesday
-            {'day': 'Wednesday', 'start_time': '09:00', 'end_time': '10:00'},
-            {'day': 'Wednesday', 'start_time': '10:00', 'end_time': '11:00'},
-            {'day': 'Wednesday', 'start_time': '11:15', 'end_time': '12:15'},
-            {'day': 'Wednesday', 'start_time': '12:15', 'end_time': '13:15'},
-            {'day': 'Wednesday', 'start_time': '14:00', 'end_time': '15:00'},
-            {'day': 'Wednesday', 'start_time': '15:00', 'end_time': '16:00'},
+            {'day': 'Wednesday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
+            {'day': 'Wednesday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
+            {'day': 'Wednesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
+            {'day': 'Wednesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Wednesday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
+            {'day': 'Wednesday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Thursday
-            {'day': 'Thursday', 'start_time': '09:00', 'end_time': '10:00'},
-            {'day': 'Thursday', 'start_time': '10:00', 'end_time': '11:00'},
-            {'day': 'Thursday', 'start_time': '11:15', 'end_time': '12:15'},
-            {'day': 'Thursday', 'start_time': '12:15', 'end_time': '13:15'},
-            {'day': 'Thursday', 'start_time': '14:00', 'end_time': '15:00'},
-            {'day': 'Thursday', 'start_time': '15:00', 'end_time': '16:00'},
+            {'day': 'Thursday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
+            {'day': 'Thursday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
+            {'day': 'Thursday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
+            {'day': 'Thursday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Thursday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
+            {'day': 'Thursday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Friday
-            {'day': 'Friday', 'start_time': '09:00', 'end_time': '10:00'},
-            {'day': 'Friday', 'start_time': '10:00', 'end_time': '11:00'},
-            {'day': 'Friday', 'start_time': '11:15', 'end_time': '12:15'},
-            {'day': 'Friday', 'start_time': '12:15', 'end_time': '13:15'},
-            {'day': 'Friday', 'start_time': '14:00', 'end_time': '15:00'},
-            {'day': 'Friday', 'start_time': '15:00', 'end_time': '16:00'}
+            {'day': 'Friday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
+            {'day': 'Friday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
+            {'day': 'Friday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
+            {'day': 'Friday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Friday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
+            {'day': 'Friday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'}
         ]
         
         for time_slot_data in time_slots_data:
@@ -304,44 +315,44 @@ def init_sample_data():
         # This will create a realistic timetable with proper distribution
         timetable_data = [
             # Monday
-            {'course_id': 1, 'classroom_id': 1, 'time_slot_id': 1, 'teacher_id': 2, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 7, 'classroom_id': 2, 'time_slot_id': 2, 'teacher_id': 4, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 11, 'classroom_id': 3, 'time_slot_id': 3, 'teacher_id': 5, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 15, 'classroom_id': 4, 'time_slot_id': 4, 'teacher_id': 6, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 19, 'classroom_id': 5, 'time_slot_id': 5, 'teacher_id': 7, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 22, 'classroom_id': 6, 'time_slot_id': 6, 'teacher_id': 8, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 1, 'classroom_id': 1, 'time_slot_id': 1, 'teacher_id': 2, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 7, 'classroom_id': 2, 'time_slot_id': 2, 'teacher_id': 4, 'student_group_id': 3, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 11, 'classroom_id': 3, 'time_slot_id': 3, 'teacher_id': 5, 'student_group_id': 4, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 15, 'classroom_id': 4, 'time_slot_id': 4, 'teacher_id': 6, 'student_group_id': 5, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 19, 'classroom_id': 5, 'time_slot_id': 5, 'teacher_id': 7, 'student_group_id': 6, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 22, 'classroom_id': 6, 'time_slot_id': 6, 'teacher_id': 8, 'student_group_id': 7, 'semester': '3', 'academic_year': '2024-25'},
             
             # Tuesday
-            {'course_id': 2, 'classroom_id': 1, 'time_slot_id': 7, 'teacher_id': 2, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 8, 'classroom_id': 2, 'time_slot_id': 8, 'teacher_id': 4, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 12, 'classroom_id': 3, 'time_slot_id': 9, 'teacher_id': 5, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 16, 'classroom_id': 4, 'time_slot_id': 10, 'teacher_id': 6, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 20, 'classroom_id': 5, 'time_slot_id': 11, 'teacher_id': 7, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 23, 'classroom_id': 6, 'time_slot_id': 12, 'teacher_id': 8, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 2, 'classroom_id': 1, 'time_slot_id': 7, 'teacher_id': 2, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 8, 'classroom_id': 2, 'time_slot_id': 8, 'teacher_id': 4, 'student_group_id': 3, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 12, 'classroom_id': 3, 'time_slot_id': 9, 'teacher_id': 5, 'student_group_id': 4, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 16, 'classroom_id': 4, 'time_slot_id': 10, 'teacher_id': 6, 'student_group_id': 5, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 20, 'classroom_id': 5, 'time_slot_id': 11, 'teacher_id': 7, 'student_group_id': 6, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 23, 'classroom_id': 6, 'time_slot_id': 12, 'teacher_id': 8, 'student_group_id': 7, 'semester': '3', 'academic_year': '2024-25'},
             
             # Wednesday
-            {'course_id': 3, 'classroom_id': 1, 'time_slot_id': 13, 'teacher_id': 3, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 9, 'classroom_id': 2, 'time_slot_id': 14, 'teacher_id': 4, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 13, 'classroom_id': 3, 'time_slot_id': 15, 'teacher_id': 5, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 17, 'classroom_id': 4, 'time_slot_id': 16, 'teacher_id': 6, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 21, 'classroom_id': 5, 'time_slot_id': 17, 'teacher_id': 7, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 24, 'classroom_id': 6, 'time_slot_id': 18, 'teacher_id': 8, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 3, 'classroom_id': 1, 'time_slot_id': 13, 'teacher_id': 3, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 9, 'classroom_id': 2, 'time_slot_id': 14, 'teacher_id': 4, 'student_group_id': 3, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 13, 'classroom_id': 3, 'time_slot_id': 15, 'teacher_id': 5, 'student_group_id': 4, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 17, 'classroom_id': 4, 'time_slot_id': 16, 'teacher_id': 6, 'student_group_id': 5, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 21, 'classroom_id': 5, 'time_slot_id': 17, 'teacher_id': 7, 'student_group_id': 6, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 24, 'classroom_id': 6, 'time_slot_id': 18, 'teacher_id': 8, 'student_group_id': 7, 'semester': '3', 'academic_year': '2024-25'},
             
             # Thursday
-            {'course_id': 4, 'classroom_id': 1, 'time_slot_id': 19, 'teacher_id': 2, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 10, 'classroom_id': 2, 'time_slot_id': 20, 'teacher_id': 4, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 14, 'classroom_id': 3, 'time_slot_id': 21, 'teacher_id': 5, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 18, 'classroom_id': 4, 'time_slot_id': 22, 'teacher_id': 6, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 25, 'classroom_id': 5, 'time_slot_id': 23, 'teacher_id': 9, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 26, 'classroom_id': 6, 'time_slot_id': 24, 'teacher_id': 10, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 4, 'classroom_id': 1, 'time_slot_id': 19, 'teacher_id': 2, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 10, 'classroom_id': 2, 'time_slot_id': 20, 'teacher_id': 4, 'student_group_id': 3, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 14, 'classroom_id': 3, 'time_slot_id': 21, 'teacher_id': 5, 'student_group_id': 4, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 18, 'classroom_id': 4, 'time_slot_id': 22, 'teacher_id': 6, 'student_group_id': 5, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 25, 'classroom_id': 5, 'time_slot_id': 23, 'teacher_id': 9, 'student_group_id': 1, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 26, 'classroom_id': 6, 'time_slot_id': 24, 'teacher_id': 10, 'student_group_id': 3, 'semester': '3', 'academic_year': '2024-25'},
             
             # Friday
-            {'course_id': 5, 'classroom_id': 1, 'time_slot_id': 25, 'teacher_id': 3, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 6, 'classroom_id': 2, 'time_slot_id': 26, 'teacher_id': 2, 'semester': '5', 'academic_year': '2024-25'},
-            {'course_id': 27, 'classroom_id': 3, 'time_slot_id': 27, 'teacher_id': 9, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 28, 'classroom_id': 4, 'time_slot_id': 28, 'teacher_id': 10, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 29, 'classroom_id': 5, 'time_slot_id': 29, 'teacher_id': 11, 'semester': '3', 'academic_year': '2024-25'},
-            {'course_id': 30, 'classroom_id': 6, 'time_slot_id': 30, 'teacher_id': 11, 'semester': '3', 'academic_year': '2024-25'}
+            {'course_id': 5, 'classroom_id': 1, 'time_slot_id': 25, 'teacher_id': 3, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 6, 'classroom_id': 2, 'time_slot_id': 26, 'teacher_id': 2, 'student_group_id': 1, 'semester': '5', 'academic_year': '2024-25'},
+            {'course_id': 27, 'classroom_id': 3, 'time_slot_id': 27, 'teacher_id': 9, 'student_group_id': 4, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 28, 'classroom_id': 4, 'time_slot_id': 28, 'teacher_id': 10, 'student_group_id': 5, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 29, 'classroom_id': 5, 'time_slot_id': 29, 'teacher_id': 11, 'student_group_id': 6, 'semester': '3', 'academic_year': '2024-25'},
+            {'course_id': 30, 'classroom_id': 6, 'time_slot_id': 30, 'teacher_id': 11, 'student_group_id': 7, 'semester': '3', 'academic_year': '2024-25'}
         ]
         
         for timetable_data_item in timetable_data:

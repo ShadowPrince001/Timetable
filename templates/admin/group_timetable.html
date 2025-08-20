@@ -2,6 +2,29 @@
 
 {% block title %}Group Timetable - {{ student_group.name }}{% endblock %}
 
+{% block scripts %}
+<script>
+function showView(viewType) {
+    // Hide all views
+    document.getElementById('calendarView').style.display = 'none';
+    document.getElementById('listView').style.display = 'none';
+    
+    // Show selected view
+    if (viewType === 'calendar') {
+        document.getElementById('calendarView').style.display = 'block';
+    } else if (viewType === 'list') {
+        document.getElementById('listView').style.display = 'block';
+    }
+    
+    // Update button states
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <!-- Header -->
@@ -50,7 +73,21 @@
                         <i class="fas fa-calendar-week me-2"></i>Weekly Schedule Grid
                     </h6>
                 </div>
-                <div class="card-body">
+                
+                <!-- View Toggle Buttons -->
+                <div class="card-body border-bottom">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary active" onclick="showView('calendar')">
+                            <i class="fas fa-calendar-alt me-2"></i>Calendar View
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="showView('list')">
+                            <i class="fas fa-list me-2"></i>List View
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Calendar View -->
+                <div id="calendarView" class="card-body">
                     {% if timetables %}
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover">
@@ -77,13 +114,57 @@
                                         {% if timetable_entry %}
                                             <div class="p-2 bg-info text-white rounded">
                                                 <div class="fw-bold">{{ timetable_entry.course.code }}</div>
-                                                <small>{{ timetable_entry.course.name }}</small><br>
-                                                <small><i class="fas fa-user-tie me-1"></i>{{ timetable_entry.teacher.name }}</small><br>
+                                                <small>{{ timetable_entry.course.name[:20] }}{% if timetable_entry.course.name|length > 20 %}...{% endif %}</small><br>
+                                                <small><i class="fas fa-user-tie me-1"></i>{{ timetable_entry.teacher.name[:15] }}{% if timetable_entry.teacher.name|length > 15 %}...{% endif %}</small><br>
                                                 <small><i class="fas fa-door-open me-1"></i>{{ timetable_entry.classroom.room_number }}</small>
+                                            </div>
+                                        {% else %}
+                                            <div class="text-muted small">
+                                                <i class="fas fa-coffee"></i><br>
+                                                <small>Break</small>
                                             </div>
                                         {% endif %}
                                     </td>
                                     {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- List View (Hidden by default) -->
+                <div id="listView" class="card-body" style="display: none;">
+                    {% if timetables %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Day</th>
+                                    <th>Time</th>
+                                    <th>Course</th>
+                                    <th>Teacher</th>
+                                    <th>Classroom</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for timetable in timetables %}
+                                <tr>
+                                    <td><strong>{{ timetable.time_slot.day }}</strong></td>
+                                    <td>{{ timetable.time_slot.start_time }} - {{ timetable.time_slot.end_time }}</td>
+                                    <td>
+                                        <strong>{{ timetable.course.code }}</strong><br>
+                                        <small class="text-muted">{{ timetable.course.name }}</small>
+                                    </td>
+                                    <td>
+                                        <strong>{{ timetable.teacher.name }}</strong><br>
+                                        <small class="text-muted">{{ timetable.teacher.department }}</small>
+                                    </td>
+                                    <td>
+                                        <strong>{{ timetable.classroom.room_number }}</strong><br>
+                                        <small class="text-muted">{{ timetable.classroom.building }}</small>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

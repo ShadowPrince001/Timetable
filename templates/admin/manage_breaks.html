@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Break Times{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4><i class="fas fa-clock"></i> Manage Break Times</h4>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBreakModal">
+                        <i class="fas fa-plus"></i> Add Break
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Day</th>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for time_slot in time_slots %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ time_slot.day }}</strong>
+                                    </td>
+                                    <td>
+                                        {{ time_slot.start_time }} - {{ time_slot.end_time }}
+                                    </td>
+                                    <td>
+                                        {% if time_slot.break_type == 'none' %}
+                                            <span class="badge bg-secondary">Regular Class</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ time_slot.break_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if time_slot.break_type != 'none' %}
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="editBreak({{ time_slot.id }}, '{{ time_slot.break_type }}')">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this break?')">
+                                                <input type="hidden" name="action" value="delete_break">
+                                                <input type="hidden" name="slot_id" value="{{ time_slot.id }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            </form>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-outline-success" 
+                                                    onclick="convertToBreak({{ time_slot.id }})">
+                                                <i class="fas fa-plus"></i> Make Break
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Break Modal -->
+<div class="modal fade" id="addBreakModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Break Time</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="add_break">
+                    
+                    <div class="form-group mb-3">
+                        <label for="day">Day</label>
+                        <select class="form-control" name="day" required>
+                            <option value="Monday">Monday</option>
+                            <option value="Tuesday">Tuesday</option>
+                            <option value="Wednesday">Wednesday</option>
+                            <option value="Thursday">Thursday</option>
+                            <option value="Friday">Friday</option>
+                            <option value="Saturday">Saturday</option>
+                            <option value="Sunday">Sunday</option>
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="start_time">Start Time</label>
+                                <input type="time" class="form-control" name="start_time" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="end_time">End Time</label>
+                                <input type="time" class="form-control" name="end_time" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="break_type">Break Type</label>
+                        <select class="form-control" name="break_type">
+                            <option value="Break">Break</option>
+                            <option value="Lunch">Lunch</option>
+                            <option value="Tea Break">Tea Break</option>
+                            <option value="Prayer Time">Prayer Time</option>
+                            <option value="Assembly">Assembly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Break</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Break Modal -->
+<div class="modal fade" id="editBreakModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Break Time</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="update_break">
+                    <input type="hidden" name="slot_id" id="edit_slot_id">
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_break_type">Break Type</label>
+                        <select class="form-control" name="break_type" id="edit_break_type">
+                            <option value="Break">Break</option>
+                            <option value="Lunch">Lunch</option>
+                            <option value="Tea Break">Tea Break</option>
+                            <option value="Prayer Time">Prayer Time</option>
+                            <option value="Assembly">Assembly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Break</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editBreak(slotId, breakType) {
+    document.getElementById('edit_slot_id').value = slotId;
+    document.getElementById('edit_break_type').value = breakType;
+    new bootstrap.Modal(document.getElementById('editBreakModal')).show();
+}
+
+function convertToBreak(slotId) {
+    if (confirm('Convert this time slot to a break? This will remove any scheduled classes.')) {
+        // Create a form and submit it
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.innerHTML = `
+            <input type="hidden" name="action" value="update_break">
+            <input type="hidden" name="slot_id" value="${slotId}">
+            <input type="hidden" name="break_type" value="Break">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

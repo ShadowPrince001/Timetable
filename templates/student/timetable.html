@@ -13,104 +13,220 @@
     </div>
 </div>
 
+<!-- View Toggle Buttons -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card shadow">
-            <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-info">
-                    <i class="fas fa-table me-2"></i>Weekly Schedule
-                </h6>
-            </div>
-            <div class="card-body">
-                {% if timetables %}
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover" width="100%" cellspacing="0">
-                        <thead class="bg-light">
-                            <tr>
-                                <th>Day</th>
-                                <th>Time</th>
-                                <th>Course</th>
-                                <th>Course Code</th>
-                                <th>Faculty</th>
-                                <th>Classroom</th>
-                                <th>Building</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for timetable in timetables %}
-                            <tr>
-                                <td>
-                                    <strong class="text-primary">{{ timetable.time_slot.day }}</strong>
-                                </td>
-                                <td>
-                                    <span class="badge bg-secondary">{{ timetable.time_slot.start_time }} - {{ timetable.time_slot.end_time }}</span>
-                                </td>
-                                <td>{{ timetable.course.name }}</td>
-                                <td><code>{{ timetable.course.code }}</code></td>
-                                <td>
-                                    <i class="fas fa-user-tie me-1"></i>{{ timetable.teacher.name }}
-                                </td>
-                                <td>
-                                    <i class="fas fa-door-open me-1"></i>{{ timetable.classroom.room_number }}
-                                </td>
-                                <td>{{ timetable.classroom.building }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-info active" onclick="showView('calendar')">
+                <i class="fas fa-calendar-alt me-2"></i>Calendar View
+            </button>
+            <button type="button" class="btn btn-outline-info" onclick="showView('list')">
+                <i class="fas fa-list me-2"></i>List View
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Calendar View -->
+<div id="calendarView">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-info">
+                        <i class="fas fa-calendar-grid me-2"></i>Weekly Schedule Grid
+                    </h6>
                 </div>
-                
-                <!-- Weekly View Grid -->
-                <div class="mt-5">
-                    <h5 class="mb-3"><i class="fas fa-calendar-week me-2"></i>Weekly Grid View</h5>
+                <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-primary text-white">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-info">
                                 <tr>
-                                    <th>Time</th>
-                                    <th>Monday</th>
-                                    <th>Tuesday</th>
-                                    <th>Wednesday</th>
-                                    <th>Thursday</th>
-                                    <th>Friday</th>
+                                    <th style="width: 120px;">Time</th>
+                                    {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                        <th class="text-center">{{ day }}</th>
+                                    {% endfor %}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set time_slots = ['09:00-10:00', '10:00-11:00', '11:15-12:15', '12:15-13:15', '14:00-15:00', '15:00-16:00'] %}
-                                {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
-                                
-                                {% for time in time_slots %}
-                                <tr>
-                                    <td class="bg-light"><strong>{{ time }}</strong></td>
-                                    {% for day in days %}
-                                    <td>
-                                        {% for timetable in timetables %}
-                                            {% if timetable.time_slot.day == day and (timetable.time_slot.start_time + '-' + timetable.time_slot.end_time) == time %}
-                                                <div class="text-center p-2 bg-info text-white rounded">
-                                                    <small><strong>{{ timetable.course.code }}</strong></small><br>
-                                                    <small>{{ timetable.classroom.room_number }}</small>
-                                                </div>
-                                            {% endif %}
+                                {% for time_slot in time_slots %}
+                                    <tr>
+                                        <td class="text-center fw-bold bg-light">
+                                            <small>{{ time_slot }}</small>
+                                        </td>
+                                        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                            <td class="text-center" style="height: 80px; vertical-align: middle;">
+                                                {% set class_found = false %}
+                                                {% set break_type = 'none' %}
+                                                
+                                                <!-- Check for classes first -->
+                                                {% if day in timetable_by_day %}
+                                                    {% for slot in timetable_by_day[day] %}
+                                                        {% if slot.start_time + '-' + slot.end_time == time_slot %}
+                                                            {% if not slot.is_time_slot %}
+                                                                <!-- This is a class -->
+                                                                {% set class_found = true %}
+                                                                <div class="class-card p-2 bg-info text-white rounded">
+                                                                    <div class="fw-bold small">{{ slot.course_code }}</div>
+                                                                    <div class="small">{{ slot.course_name[:20] }}{% if slot.course_name|length > 20 %}...{% endif %}</div>
+                                                                    <div class="small">{{ slot.teacher_name[:15] }}{% if slot.teacher_name|length > 15 %}...{% endif %}</div>
+                                                                    <div class="small">{{ slot.classroom }}</div>
+                                                                    <div class="small">{{ slot.building }}</div>
+                                                                    <button class="btn btn-sm btn-light mt-1" 
+                                                                            onclick="showClassDetails('{{ slot.course_code }}', '{{ slot.teacher_name }}', '{{ slot.classroom }}', '{{ slot.building }}', '{{ slot.start_time }}', '{{ slot.end_time }}')">
+                                                                        <i class="fas fa-info-circle"></i>
+                                                                    </button>
+                                                                </div>
+                                                            {% else %}
+                                                                <!-- This is a time slot - check if it's a break -->
+                                                                {% if slot.break_type and slot.break_type != 'none' %}
+                                                                    {% set break_type = slot.break_type %}
+                                                                {% endif %}
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
+                                                
+                                                <!-- Only show breaks if no class is scheduled -->
+                                                {% if not class_found %}
+                                                    {% if break_type != 'none' %}
+                                                        <div class="text-muted small">
+                                                            {% if break_type == 'tea_break' %}
+                                                                <i class="fas fa-coffee text-warning"></i><br>
+                                                                <small class="text-warning">Tea Break</small>
+                                                            {% elif break_type == 'lunch' %}
+                                                                <i class="fas fa-utensils text-success"></i><br>
+                                                                <small class="text-success">Lunch</small>
+                                                            {% elif break_type == 'prayer' %}
+                                                                <i class="fas fa-pray text-info"></i><br>
+                                                                <small class="text-info">Prayer</small>
+                                                            {% elif break_type == 'assembly' %}
+                                                                <i class="fas fa-users text-primary"></i><br>
+                                                                <small class="text-primary">Assembly</small>
+                                                            {% else %}
+                                                                <i class="fas fa-coffee"></i><br>
+                                                                <small>{{ break_type|title }}</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </td>
                                         {% endfor %}
-                                    </td>
-                                    {% endfor %}
-                                </tr>
+                                    </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
-                
-                {% else %}
-                <div class="text-center py-5">
-                    <i class="fas fa-calendar-times fa-4x text-muted mb-4"></i>
-                    <h4 class="text-muted">No Timetable Available</h4>
-                    <p class="text-muted">Your timetable has not been assigned yet. Please contact the administration.</p>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
+</div>
+            
+<!-- List View (Hidden by default) -->
+<div id="listView" style="display: none;">
+    {% if timetable_by_day %}
+        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+            {% if day in timetable_by_day and timetable_by_day[day] %}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                                <h6 class="m-0 font-weight-bold text-info">
+                                    <i class="fas fa-calendar-day me-2"></i>{{ day }}
+                                </h6>
+                                <span class="badge bg-info">{{ timetable_by_day[day]|length }} slots</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Course</th>
+                                                <th>Teacher</th>
+                                                <th>Classroom</th>
+                                                <th>Building</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for slot in timetable_by_day[day] %}
+                                                <tr>
+                                                    <td>
+                                                        <strong>{{ slot.start_time }} - {{ slot.end_time }}</strong>
+                                                    </td>
+                                                    {% if not slot.is_time_slot %}
+                                                        <!-- This is a class -->
+                                                        <td>
+                                                            <div>
+                                                                <strong>{{ slot.course_code }}</strong><br>
+                                                                <small class="text-muted">{{ slot.course_name }}</small>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <i class="fas fa-user-tie me-1"></i>{{ slot.teacher_name }}<br>
+                                                            <small class="text-muted">{{ slot.teacher_department }}</small>
+                                                        </td>
+                                                        <td>
+                                                            <i class="fas fa-door-open me-1"></i>{{ slot.classroom }}
+                                                        </td>
+                                                        <td>
+                                                            <i class="fas fa-building me-1"></i>{{ slot.building }}
+                                                        </td>
+                                                    {% else %}
+                                                        <!-- This is a break time -->
+                                                        <td colspan="4">
+                                                            {% if slot.break_type and slot.break_type != 'none' %}
+                                                                <div class="text-center">
+                                                                    {% if slot.break_type == 'tea_break' %}
+                                                                        <i class="fas fa-coffee text-warning me-2"></i>
+                                                                        <span class="text-warning fw-bold">Tea Break</span>
+                                                                    {% elif slot.break_type == 'lunch' %}
+                                                                        <i class="fas fa-utensils text-success me-2"></i>
+                                                                        <span class="text-success fw-bold">Lunch Break</span>
+                                                                    {% elif slot.break_type == 'prayer' %}
+                                                                        <i class="fas fa-pray text-info me-2"></i>
+                                                                        <span class="text-info fw-bold">Prayer Time</span>
+                                                                    {% elif slot.break_type == 'assembly' %}
+                                                                        <i class="fas fa-users text-primary me-2"></i>
+                                                                        <span class="text-primary fw-bold">Assembly</span>
+                                                                    {% else %}
+                                                                        <i class="fas fa-coffee me-2"></i>
+                                                                        <span class="fw-bold">{{ slot.break_type|title }}</span>
+                                                                    {% endif %}
+                                                                </div>
+                                                            {% else %}
+                                                                <div class="text-center text-muted">
+                                                                    <i class="fas fa-minus me-2"></i>
+                                                                    <span>Free Time</span>
+                                                                </div>
+                                                            {% endif %}
+                                                        </td>
+                                                    {% endif %}
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-calendar-times fa-4x text-muted mb-3"></i>
+                        <h4 class="text-muted">No Timetable Available</h4>
+                        <p class="text-muted">Your timetable has not been assigned yet. Please contact the administration.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
 </div>
 
 <!-- Quick Stats -->
@@ -123,7 +239,17 @@
                         <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
                             Total Classes
                         </div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|length }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% set total_classes = 0 %}
+                            {% for day, slots in timetable_by_day.items() %}
+                                {% for slot in slots %}
+                                    {% if not slot.is_time_slot %}
+                                        {% set total_classes = total_classes + 1 %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                            {{ total_classes }}
+                        </div>
                     </div>
                     <div class="col-auto">
                         <i class="fas fa-calendar fa-2x text-gray-300"></i>
@@ -141,7 +267,17 @@
                         <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
                             Unique Courses
                         </div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='course')|unique|list|length }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% set unique_courses = [] %}
+                            {% for day, slots in timetable_by_day.items() %}
+                                {% for slot in slots %}
+                                    {% if not slot.is_time_slot and slot.course_code not in unique_courses %}
+                                        {% set _ = unique_courses.append(slot.course_code) %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                            {{ unique_courses|length }}
+                        </div>
                     </div>
                     <div class="col-auto">
                         <i class="fas fa-book fa-2x text-gray-300"></i>
@@ -159,7 +295,17 @@
                         <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
                             Different Rooms
                         </div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='classroom')|unique|list|length }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% set unique_rooms = [] %}
+                            {% for day, slots in timetable_by_day.items() %}
+                                {% for slot in slots %}
+                                    {% if not slot.is_time_slot and slot.classroom not in unique_rooms %}
+                                        {% set _ = unique_rooms.append(slot.classroom) %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                            {{ unique_rooms|length }}
+                        </div>
                     </div>
                     <div class="col-auto">
                         <i class="fas fa-building fa-2x text-gray-300"></i>
@@ -177,7 +323,17 @@
                         <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
                             Faculty Members
                         </div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ timetables|map(attribute='teacher')|unique|list|length }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% set unique_teachers = [] %}
+                            {% for day, slots in timetable_by_day.items() %}
+                                {% for slot in slots %}
+                                    {% if not slot.is_time_slot and slot.teacher_name not in unique_teachers %}
+                                        {% set _ = unique_teachers.append(slot.teacher_name) %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                            {{ unique_teachers|length }}
+                        </div>
                     </div>
                     <div class="col-auto">
                         <i class="fas fa-chalkboard-teacher fa-2x text-gray-300"></i>
@@ -203,9 +359,85 @@
     </div>
 </div>
 
+<!-- Class Details Modal -->
+<div class="modal fade" id="classDetailsModal" tabindex="-1" aria-labelledby="classDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="classDetailsModalLabel">Class Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-12">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Course Code:</strong></td>
+                                <td id="modal-course-code"></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Teacher:</strong></td>
+                                <td id="modal-teacher"></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Classroom:</strong></td>
+                                <td id="modal-classroom"></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Building:</strong></td>
+                                <td id="modal-building"></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Time:</strong></td>
+                                <td id="modal-time"></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
 <script>
+function showView(viewType) {
+    // Hide all views
+    document.getElementById('calendarView').style.display = 'none';
+    document.getElementById('listView').style.display = 'none';
+    
+    // Show selected view
+    if (viewType === 'calendar') {
+        document.getElementById('calendarView').style.display = 'block';
+    } else if (viewType === 'list') {
+        document.getElementById('listView').style.display = 'block';
+    }
+    
+    // Update button states
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
 function printTimetable() {
     window.print();
+}
+
+function showClassDetails(courseCode, teacher, classroom, building, startTime, endTime) {
+    document.getElementById('modal-course-code').textContent = courseCode;
+    document.getElementById('modal-teacher').textContent = teacher;
+    document.getElementById('modal-classroom').textContent = classroom;
+    document.getElementById('modal-building').textContent = building;
+    document.getElementById('modal-time').textContent = startTime + ' - ' + endTime;
+    
+    const modal = new bootstrap.Modal(document.getElementById('classDetailsModal'));
+    modal.show();
 }
 </script>
 {% endblock %}

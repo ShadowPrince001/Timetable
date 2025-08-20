@@ -77,8 +77,8 @@ class MultiGroupTimetableGenerator:
         self.teachers = []
         self.student_groups = []
         self.generated_timetables = {}  # group_id -> List[TimetableEntry]
-        self.global_classroom_usage = {}  # (day, time) -> classroom_id
-        self.global_teacher_usage = {}    # (day, time) -> teacher_id
+        self.global_classroom_usage = defaultdict(list)  # (day, time) -> [classroom_id]
+        self.global_teacher_usage = defaultdict(list)    # (day, time) -> [teacher_id]
         self.conflicts = []
         
     def add_time_slots(self, time_slots: List[TimeSlot]):
@@ -109,13 +109,24 @@ class MultiGroupTimetableGenerator:
         # Clear old data to prevent memory leaks
         self._clear_old_data()
         
+        print(f"🚀 Starting timetable generation for {len(self.student_groups)} student groups...")
+        print(f"📚 Available courses: {len(self.courses)}")
+        print(f"🏫 Available classrooms: {len(self.classrooms)}")
+        print(f"👨‍🏫 Available teachers: {len(self.teachers)}")
+        print(f"⏰ Available time slots: {len(self.time_slots)}")
+        
         # Generate timetable for each group
         for group in self.student_groups:
+            print(f"\n📋 Generating timetable for group: {group.name} ({group.department})")
+            
             # Get courses for this group (filter by department)
             group_courses = [c for c in self.courses if c.department == group.department]
             
             if not group_courses:
+                print(f"   ⚠️  No courses found for department: {group.department}")
                 continue
+            
+            print(f"   📖 Found {len(group_courses)} courses for this group")
             
             # Generate timetable for this group
             group_timetable = self._generate_group_timetable(group, group_courses)
@@ -123,6 +134,18 @@ class MultiGroupTimetableGenerator:
             if group_timetable:
                 self.generated_timetables[group.id] = group_timetable
                 self._update_global_usage(group_timetable)
+                print(f"   ✅ Successfully generated timetable with {len(group_timetable)} classes")
+            else:
+                print(f"   ❌ Failed to generate timetable for group {group.name}")
+        
+        # Print final statistics
+        total_classes = sum(len(timetable) for timetable in self.generated_timetables.values())
+        print(f"\n📊 Generation complete! Total classes scheduled: {total_classes}")
+        
+        # Show time slot usage
+        for slot_key, classroom_ids in self.global_classroom_usage.items():
+            if len(classroom_ids) > 1:
+                print(f"   🎯 Time slot {slot_key}: {len(classroom_ids)} classes scheduled")
         
         return self.generated_timetables
     
@@ -203,14 +226,6 @@ class MultiGroupTimetableGenerator:
             if slot_key in group_used_slots:
                 continue
                 
-            # Check global classroom conflict
-            if slot_key in self.global_classroom_usage:
-                continue
-                
-            # Check global teacher conflict
-            if slot_key in self.global_teacher_usage:
-                continue
-                
             # Find available classroom
             classroom = self._find_available_classroom(course, slot)
             if not classroom:
@@ -225,6 +240,8 @@ class MultiGroupTimetableGenerator:
             return slot, classroom, teacher
         
         print(f"   ❌ FAILED: No available resources found for course {course.code}")
+        print(f"      Group used slots: {len(group_used_slots)}")
+        print(f"      Available time slots: {len(self.time_slots)}")
         return None, None, None
     
     def _find_available_classroom(self, course: Course, slot: TimeSlot) -> Optional[Classroom]:
@@ -261,11 +278,9 @@ class MultiGroupTimetableGenerator:
         random.shuffle(suitable_classrooms)
         
         for classroom in suitable_classrooms:
-            # Check if classroom is available at this time globally
-            if slot_key not in self.global_classroom_usage:
+            # Check if this specific classroom is available at this time
+            if classroom.id not in self.global_classroom_usage[slot_key]:
                 return classroom
-            else:
-                continue
         
         return None
     
@@ -283,8 +298,8 @@ class MultiGroupTimetableGenerator:
         random.shuffle(suitable_teachers)
         
         for teacher in suitable_teachers:
-            # Check if teacher is available at this time globally
-            if slot_key not in self.global_teacher_usage:
+            # Check if this specific teacher is available at this time
+            if teacher.id not in self.global_teacher_usage[slot_key]:
                 return teacher
         
         return None
@@ -293,8 +308,12 @@ class MultiGroupTimetableGenerator:
         """Update global resource usage tracking"""
         for entry in group_timetable:
             slot_key = (entry.day, entry.start_time)
-            self.global_classroom_usage[slot_key] = entry.classroom_id
-            self.global_teacher_usage[slot_key] = entry.teacher_id
+            self.global_classroom_usage[slot_key].append(entry.classroom_id)
+            self.global_teacher_usage[slot_key].append(entry.teacher_id)
+            
+            # Show when multiple classes are scheduled in the same time slot
+            if len(self.global_classroom_usage[slot_key]) > 1:
+                print(f"      🎯 Multiple classes in {slot_key}: {len(self.global_classroom_usage[slot_key])} classes")
     
     def get_faculty_timetable(self, teacher_id: int) -> List[TimetableEntry]:
         """Get compiled timetable for a specific faculty member across all groups"""
@@ -323,28 +342,48 @@ class MultiGroupTimetableGenerator:
         teacher_conflicts = set()
         
         # Check for classroom conflicts
-        classroom_usage = defaultdict(list)
-        for group_id, group_timetable in self.generated_timetables.items():
-            for entry in group_timetable:
-                slot_key = (entry.day, entry.start_time)
-                classroom_usage[slot_key].append((entry.classroom_id, group_id))
-                
-                if len(classroom_usage[slot_key]) > 1:
-                    classroom_conflicts.add(slot_key)
+        for slot_key, classroom_ids in self.global_classroom_usage.items():
+            if len(classroom_ids) > len(set(classroom_ids)):  # Check for duplicate classroom usage
+                classroom_conflicts.add(slot_key)
         
         # Check for teacher conflicts
-        teacher_usage = defaultdict(list)
-        for group_id, group_timetable in self.generated_timetables.items():
-            for entry in group_timetable:
-                slot_key = (entry.day, entry.start_time)
-                teacher_usage[slot_key].append((entry.teacher_id, group_id))
-                
-                if len(teacher_usage[slot_key]) > 1:
-                    teacher_conflicts.add(slot_key)
+        for slot_key, teacher_ids in self.global_teacher_usage.items():
+            if len(teacher_ids) > len(set(teacher_ids)):  # Check for duplicate teacher usage
+                teacher_conflicts.add(slot_key)
         
         if classroom_conflicts or teacher_conflicts:
             return False
         
         return True
+    
+    def get_timetable_statistics(self) -> Dict:
+        """Get statistics about the generated timetables"""
+        stats = {
+            'total_groups': len(self.generated_timetables),
+            'total_classes': sum(len(timetable) for timetable in self.generated_timetables.values()),
+            'time_slot_usage': {},
+            'classroom_usage': {},
+            'teacher_usage': {}
+        }
+        
+        # Count usage per time slot
+        for slot_key, classroom_ids in self.global_classroom_usage.items():
+            stats['time_slot_usage'][slot_key] = len(classroom_ids)
+        
+        # Count classroom usage
+        for slot_key, classroom_ids in self.global_classroom_usage.items():
+            for classroom_id in classroom_ids:
+                if classroom_id not in stats['classroom_usage']:
+                    stats['classroom_usage'][classroom_id] = 0
+                stats['classroom_usage'][classroom_id] += 1
+        
+        # Count teacher usage
+        for slot_key, teacher_ids in self.global_teacher_usage.items():
+            for teacher_id in teacher_ids:
+                if teacher_id not in stats['teacher_usage']:
+                    stats['teacher_usage'][teacher_id] = 0
+                stats['teacher_usage'][teacher_id] += 1
+        
+        return stats
     
 

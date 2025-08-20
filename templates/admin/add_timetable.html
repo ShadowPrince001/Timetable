@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Edit Timetable Entry{% endblock %}
+{% block title %}Add New Timetable Entry{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
@@ -8,33 +8,29 @@
         <div class="col-md-8 offset-md-2">
             <div class="card">
                 <div class="card-header">
-                    <h4><i class="fas fa-edit"></i> Edit Timetable Entry</h4>
+                    <h4><i class="fas fa-plus"></i> Add New Timetable Entry</h4>
                 </div>
                 <div class="card-body">
                     <form method="POST">
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="course_id">Course</label>
+                                    <label for="course_id">Course *</label>
                                     <select class="form-control" id="course_id" name="course_id" required>
                                         <option value="">Select Course</option>
                                         {% for course in courses %}
-                                        <option value="{{ course.id }}" {% if course.id == timetable.course_id %}selected{% endif %}>
-                                            {{ course.code }} - {{ course.name }}
-                                        </option>
+                                        <option value="{{ course.id }}">{{ course.code }} - {{ course.name }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="teacher_id">Teacher</label>
+                                    <label for="teacher_id">Teacher *</label>
                                     <select class="form-control" id="teacher_id" name="teacher_id" required>
                                         <option value="">Select Teacher</option>
                                         {% for teacher in teachers %}
-                                        <option value="{{ teacher.id }}" {% if teacher.id == timetable.teacher_id %}selected{% endif %}>
-                                            {{ teacher.name }} ({{ teacher.department }})
-                                        </option>
+                                        <option value="{{ teacher.id }}">{{ teacher.name }} ({{ teacher.department }})</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -44,26 +40,22 @@
                         <div class="row mt-3">
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="classroom_id">Classroom</label>
+                                    <label for="classroom_id">Classroom *</label>
                                     <select class="form-control" id="classroom_id" name="classroom_id" required>
                                         <option value="">Select Classroom</option>
                                         {% for classroom in classrooms %}
-                                        <option value="{{ classroom.id }}" {% if classroom.id == timetable.classroom_id %}selected{% endif %}>
-                                            {{ classroom.room_number }} ({{ classroom.building }})
-                                        </option>
+                                        <option value="{{ classroom.id }}">{{ classroom.room_number }} ({{ classroom.building }})</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="time_slot_id">Time Slot</label>
+                                    <label for="time_slot_id">Time Slot *</label>
                                     <select class="form-control" id="time_slot_id" name="time_slot_id" required>
                                         <option value="">Select Time Slot</option>
                                         {% for time_slot in time_slots %}
-                                        <option value="{{ time_slot.id }}" {% if time_slot.id == timetable.time_slot_id %}selected{% endif %}>
-                                            {{ time_slot.day }} {{ time_slot.start_time }}-{{ time_slot.end_time }}
-                                        </option>
+                                        <option value="{{ time_slot.id }}">{{ time_slot.day }} {{ time_slot.start_time }}-{{ time_slot.end_time }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -73,28 +65,39 @@
                         <div class="row mt-3">
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="student_group_id">Student Group</label>
+                                    <label for="student_group_id">Student Group *</label>
                                     <select class="form-control" id="student_group_id" name="student_group_id" required>
                                         <option value="">Select Student Group</option>
                                         {% for group in student_groups %}
-                                        <option value="{{ group.id }}" {% if group.id == timetable.student_group_id %}selected{% endif %}>
-                                            {{ group.name }} ({{ group.department }})
-                                        </option>
+                                        <option value="{{ group.id }}">{{ group.name }} ({{ group.department }})</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label>Current Details</label>
-                                    <div class="form-control-plaintext">
-                                        <small>
-                                            <strong>Semester:</strong> {{ timetable.semester }}<br>
-                                            <strong>Academic Year:</strong> {{ timetable.academic_year }}
-                                        </small>
-                                    </div>
+                                    <label for="semester">Semester</label>
+                                    <select class="form-control" id="semester" name="semester">
+                                        <option value="Fall 2024">Fall 2024</option>
+                                        <option value="Spring 2025">Spring 2025</option>
+                                        <option value="Summer 2025">Summer 2025</option>
+                                    </select>
                                 </div>
                             </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="academic_year">Academic Year</label>
+                                    <input type="text" class="form-control" id="academic_year" name="academic_year" value="2024-25" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Note:</strong> The system will automatically check for conflicts (classroom double-booking, teacher double-booking, or student group conflicts) before adding the entry.
                         </div>
                         
                         <div class="row mt-4">
@@ -104,8 +107,8 @@
                                 </a>
                             </div>
                             <div class="col-md-6 text-end">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save"></i> Update Timetable
+                                <button type="submit" class="btn btn-primary" id="submitBtn" disabled>
+                                    <i class="fas fa-plus"></i> Add Timetable Entry
                                 </button>
                             </div>
                         </div>
@@ -117,7 +120,7 @@
 </div>
 
 <script>
-// Add client-side validation and conflict checking
+// Add client-side validation
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
     const courseSelect = document.getElementById('course_id');
@@ -125,14 +128,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const classroomSelect = document.getElementById('classroom_id');
     const timeSlotSelect = document.getElementById('time_slot_id');
     const groupSelect = document.getElementById('student_group_id');
+    const submitBtn = document.getElementById('submitBtn');
     
     // Real-time validation
     function validateForm() {
         const isValid = courseSelect.value && teacherSelect.value && 
                        classroomSelect.value && timeSlotSelect.value && groupSelect.value;
         
-        const submitBtn = form.querySelector('button[type="submit"]');
         submitBtn.disabled = !isValid;
+        
+        if (isValid) {
+            submitBtn.classList.remove('btn-secondary');
+            submitBtn.classList.add('btn-primary');
+        } else {
+            submitBtn.classList.remove('btn-primary');
+            submitBtn.classList.add('btn-secondary');
+        }
         
         return isValid;
     }

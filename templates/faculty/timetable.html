@@ -13,6 +13,20 @@
     </div>
 </div>
 
+<!-- View Toggle Buttons -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary active" onclick="showView('calendar')">
+                <i class="fas fa-calendar-alt me-2"></i>Calendar View
+            </button>
+            <button type="button" class="btn btn-outline-primary" onclick="showView('list')">
+                <i class="fas fa-list me-2"></i>List View
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Timetable Overview Card -->
 <div class="row mb-4">
     <div class="col-12">
@@ -84,86 +98,215 @@
     </div>
 </div>
 
-<!-- Daily Timetables -->
-{% if timetable_by_day %}
-    {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
-        {% if day in timetable_by_day and timetable_by_day[day] %}
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="card shadow">
-                        <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                            <h6 class="m-0 font-weight-bold text-primary">
-                                <i class="fas fa-calendar-day me-2"></i>{{ day }}
-                            </h6>
-                            <span class="badge bg-primary">{{ timetable_by_day[day]|length }} classes</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-bordered table-hover">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Time</th>
-                                            <th>Course</th>
-                                            <th>Student Group</th>
-                                            <th>Classroom</th>
-                                            <th>Building</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for class in timetable_by_day[day] %}
-                                            <tr>
-                                                <td>
-                                                    <strong>{{ class.start_time }} - {{ class.end_time }}</strong>
-                                                </td>
-                                                <td>
-                                                    <div>
-                                                        <strong>{{ class.course_code }}</strong><br>
-                                                        <small class="text-muted">{{ class.course_name }}</small>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-info">{{ class.student_group }}</span>
-                                                </td>
-                                                <td>
-                                                    <i class="fas fa-door-open me-1"></i>{{ class.classroom }}
-                                                </td>
-                                                <td>
-                                                    <i class="fas fa-building me-1"></i>{{ class.building }}
-                                                </td>
-                                                <td>
-                                                    <button class="btn btn-sm btn-outline-primary" 
-                                                            onclick="showClassDetails('{{ class.course_code }}', '{{ class.student_group }}', '{{ class.classroom }}', '{{ class.building }}', '{{ class.start_time }}', '{{ class.end_time }}')">
-                                                        <i class="fas fa-info-circle"></i> Details
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-    {% endfor %}
-{% else %}
-    <div class="row">
+<!-- Calendar View -->
+<div id="calendarView">
+    <div class="row mb-4">
         <div class="col-12">
             <div class="card shadow">
-                <div class="card-body text-center py-5">
-                    <i class="fas fa-calendar-times fa-4x text-muted mb-3"></i>
-                    <h4 class="text-muted">No Classes Scheduled</h4>
-                    <p class="text-muted">You don't have any classes scheduled yet.</p>
-                    <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary">
-                        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
-                    </a>
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-calendar-grid me-2"></i>Weekly Schedule Grid
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 120px;">Time</th>
+                                    {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                        <th class="text-center">{{ day }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for time_slot in time_slots %}
+                                    <tr>
+                                        <td class="text-center fw-bold bg-light">
+                                            <small>{{ time_slot }}</small>
+                                        </td>
+                                        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                            <td class="text-center" style="height: 80px; vertical-align: middle;">
+                                                {% set class_found = false %}
+                                                {% set break_type = 'none' %}
+                                                
+                                                <!-- Check for classes first -->
+                                                {% if day in timetable_by_day %}
+                                                    {% for slot in timetable_by_day[day] %}
+                                                        {% if slot.start_time + '-' + slot.end_time == time_slot %}
+                                                            {% if not slot.is_time_slot %}
+                                                                <!-- This is a class -->
+                                                                {% set class_found = true %}
+                                                                <div class="class-card p-2 bg-primary text-white rounded">
+                                                                    <div class="fw-bold small">{{ slot.course_code }}</div>
+                                                                    <div class="small">{{ slot.course_name[:20] }}{% if slot.course_name|length > 20 %}...{% endif %}</div>
+                                                                    <div class="small">{{ slot.student_group }}</div>
+                                                                    <div class="small">{{ slot.classroom }}</div>
+                                                                    <button class="btn btn-sm btn-light mt-1" 
+                                                                            onclick="showClassDetails('{{ slot.course_code }}', '{{ slot.student_group }}', '{{ slot.classroom }}', '{{ slot.building }}', '{{ slot.start_time }}', '{{ slot.end_time }}')">
+                                                                        <i class="fas fa-info-circle"></i>
+                                                                    </button>
+                                                                </div>
+                                                            {% else %}
+                                                                <!-- This is a time slot - check if it's a break -->
+                                                                {% if slot.break_type and slot.break_type != 'none' %}
+                                                                    {% set break_type = slot.break_type %}
+                                                                {% endif %}
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
+                                                
+                                                <!-- Only show breaks if no class is scheduled -->
+                                                {% if not class_found %}
+                                                    {% if break_type != 'none' %}
+                                                        <div class="text-muted small">
+                                                            {% if break_type == 'tea_break' %}
+                                                                <i class="fas fa-coffee text-warning"></i><br>
+                                                                <small class="text-warning">Tea Break</small>
+                                                            {% elif break_type == 'lunch' %}
+                                                                <i class="fas fa-utensils text-success"></i><br>
+                                                                <small class="text-success">Lunch</small>
+                                                            {% elif break_type == 'prayer' %}
+                                                                <i class="fas fa-pray text-info"></i><br>
+                                                                <small class="text-info">Prayer</small>
+                                                            {% elif break_type == 'assembly' %}
+                                                                <i class="fas fa-users text-primary"></i><br>
+                                                                <small class="text-primary">Assembly</small>
+                                                            {% else %}
+                                                                <i class="fas fa-coffee"></i><br>
+                                                                <small>{{ break_type|title }}</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-{% endif %}
+</div>
+
+<!-- List View (Hidden by default) -->
+<div id="listView" style="display: none;">
+    {% if timetable_by_day %}
+        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+            {% if day in timetable_by_day and timetable_by_day[day] %}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                                <h6 class="m-0 font-weight-bold text-primary">
+                                    <i class="fas fa-calendar-day me-2"></i>{{ day }}
+                                </h6>
+                                <span class="badge bg-primary">{{ timetable_by_day[day]|length }} classes</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Course</th>
+                                                <th>Student Group</th>
+                                                <th>Classroom</th>
+                                                <th>Building</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                                                        <tbody>
+                                    {% for slot in timetable_by_day[day] %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ slot.start_time }} - {{ slot.end_time }}</strong>
+                                            </td>
+                                            {% if not slot.is_time_slot %}
+                                                <!-- This is a class -->
+                                                <td>
+                                                    <div>
+                                                        <strong>{{ slot.course_code }}</strong><br>
+                                                        <small class="text-muted">{{ slot.course_name }}</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-info">{{ slot.student_group }}</span>
+                                                </td>
+                                                <td>
+                                                    <i class="fas fa-door-open me-1"></i>{{ slot.classroom }}
+                                                </td>
+                                                <td>
+                                                    <i class="fas fa-building me-1"></i>{{ slot.building }}
+                                                </td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-outline-primary" 
+                                                            onclick="showClassDetails('{{ slot.course_code }}', '{{ slot.student_group }}', '{{ slot.classroom }}', '{{ slot.building }}', '{{ slot.start_time }}', '{{ slot.end_time }}')">
+                                                        <i class="fas fa-info-circle"></i> Details
+                                                    </button>
+                                                </td>
+                                            {% else %}
+                                                <!-- This is a break time -->
+                                                <td colspan="5">
+                                                    {% if slot.break_type and slot.break_type != 'none' %}
+                                                        <div class="text-center">
+                                                            {% if slot.break_type == 'tea_break' %}
+                                                                <i class="fas fa-coffee text-warning me-2"></i>
+                                                                <span class="text-warning fw-bold">Tea Break</span>
+                                                            {% elif slot.break_type == 'lunch' %}
+                                                                <i class="fas fa-utensils text-success me-2"></i>
+                                                                <span class="text-success fw-bold">Lunch Break</span>
+                                                            {% elif slot.break_type == 'prayer' %}
+                                                                <i class="fas fa-pray text-info me-2"></i>
+                                                                <span class="text-info fw-bold">Prayer Time</span>
+                                                            {% elif slot.break_type == 'assembly' %}
+                                                                <i class="fas fa-users text-primary me-2"></i>
+                                                                <span class="text-primary fw-bold">Assembly</span>
+                                                            {% else %}
+                                                                <i class="fas fa-coffee me-2"></i>
+                                                                <span class="fw-bold">{{ slot.break_type|title }}</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% else %}
+                                                        <div class="text-center text-muted">
+                                                            <i class="fas fa-minus me-2"></i>
+                                                            <span>Free Time</span>
+                                                        </div>
+                                                    {% endif %}
+                                                </td>
+                                            {% endif %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-calendar-times fa-4x text-muted mb-3"></i>
+                        <h4 class="text-muted">No Classes Scheduled</h4>
+                        <p class="text-muted">You don't have any classes scheduled yet.</p>
+                        <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
 
 <!-- Class Details Modal -->
 <div class="modal fade" id="classDetailsModal" tabindex="-1" aria-labelledby="classDetailsModalLabel" aria-hidden="true">
@@ -217,6 +360,25 @@
 
 {% block scripts %}
 <script>
+function showView(viewType) {
+    // Hide all views
+    document.getElementById('calendarView').style.display = 'none';
+    document.getElementById('listView').style.display = 'none';
+    
+    // Show selected view
+    if (viewType === 'calendar') {
+        document.getElementById('calendarView').style.display = 'block';
+    } else if (viewType === 'list') {
+        document.getElementById('listView').style.display = 'block';
+    }
+    
+    // Update button states
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
 function showClassDetails(courseCode, studentGroup, classroom, building, startTime, endTime) {
     document.getElementById('modalCourse').textContent = courseCode;
     document.getElementById('modalGroup').textContent = studentGroup;

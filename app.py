@@ -10,6 +10,7 @@ import json
 import os
 from dotenv import load_dotenv
 from timetable_generator import MultiGroupTimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, StudentGroup as GenStudentGroup, Teacher as GenTeacher
+from collections import defaultdict
 
 load_dotenv()
 
@@ -41,8 +42,12 @@ class User(UserMixin, db.Model):
     phone = db.Column(db.String(20))
     address = db.Column(db.Text)
     qualifications = db.Column(db.Text)  # For faculty - their teaching qualifications
+    experience = db.Column(db.Integer)  # Years of experience for faculty
+    bio = db.Column(db.Text)  # User bio/description
+    access_level = db.Column(db.String(20), default='admin')  # For admin users
     group_id = db.Column(db.Integer, db.ForeignKey('student_group.id'))  # For students only
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime)
 
 class Course(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -589,77 +594,236 @@ def admin_classrooms():
 @app.route('/admin/timetable')
 @login_required
 def admin_timetable():
+    """Admin timetable management page"""
     if current_user.role != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    try:
-        # Get filter parameters
-        day_filter = request.args.get('day', '')
-        course_filter = request.args.get('course', '')
-        teacher_filter = request.args.get('teacher', '')
-        classroom_filter = request.args.get('classroom', '')
-        semester_filter = request.args.get('semester', '')
-        time_slot_filter = request.args.get('time_slot', '')
-        group_filter = request.args.get('group', '')
-        
-        # Build query with filters and proper joins
-        query = db.session.query(Timetable).options(
-            db.joinedload(Timetable.course),
-            db.joinedload(Timetable.classroom),
-            db.joinedload(Timetable.time_slot),
-            db.joinedload(Timetable.teacher),
-            db.joinedload(Timetable.student_group)
-        )
-        
-        if day_filter:
-            query = query.join(TimeSlot).filter(TimeSlot.day == day_filter)
-        
-        if course_filter:
-            query = query.filter(Timetable.course_id == course_filter)
-        
-        if teacher_filter:
-            query = query.filter(Timetable.teacher_id == teacher_filter)
-        
-        if classroom_filter:
-            query = query.filter(Timetable.classroom_id == classroom_filter)
-        
-        if semester_filter:
-            query = query.filter(Timetable.semester == semester_filter)
-        
-        if time_slot_filter:
-            start_time, end_time = time_slot_filter.split('-')
-            query = query.join(TimeSlot).filter(
-                TimeSlot.start_time == start_time,
-                TimeSlot.end_time == end_time
-            )
-        
-        if group_filter:
-            query = query.filter(Timetable.student_group_id == group_filter)
-        
-        timetables = query.all()
-        courses = Course.query.all()
-        classrooms = Classroom.query.all()
-        teachers = User.query.filter_by(role='faculty').all()
-        time_slots = TimeSlot.query.all()
-        student_groups = StudentGroup.query.all()
-                
-    except Exception as e:
-        flash(f'Error loading timetable data: {str(e)}', 'error')
-        timetables = []
-        courses = []
-        classrooms = []
-        teachers = []
-        time_slots = []
-        student_groups = []
+
     
-    return render_template('admin/timetable.html', 
+    # Get all timetables with proper joins and sort by time
+    timetables = db.session.query(Timetable).options(
+        db.joinedload(Timetable.time_slot),
+        db.joinedload(Timetable.course),
+        db.joinedload(Timetable.classroom),
+        db.joinedload(Timetable.teacher),
+        db.joinedload(Timetable.student_group)
+    ).all()
+    
+    # Sort timetables by day and time
+    timetables = sort_timetables_by_time(timetables)
+    
+    # Get generation results from session if available
+    generation_results = session.get('timetable_generation_results')
+    
+    return render_template('admin/timetable.html',
                          timetables=timetables,
-                         courses=courses,
-                         classrooms=classrooms,
-                         teachers=teachers,
-                         time_slots=time_slots,
-                         student_groups=student_groups)
+                         generation_results=generation_results,
+                         student_groups=StudentGroup.query.all(),
+                         courses=Course.query.all(),
+                         teachers=User.query.filter_by(role='faculty').all(),
+                         classrooms=Classroom.query.all(),
+                         time_slots=TimeSlot.query.all())
+
+@app.route('/admin/edit_timetable/<int:timetable_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_timetable(timetable_id):
+    """Edit a specific timetable entry"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    timetable = Timetable.query.get_or_404(timetable_id)
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            course_id = request.form.get('course_id', type=int)
+            teacher_id = request.form.get('teacher_id', type=int)
+            classroom_id = request.form.get('classroom_id', type=int)
+            time_slot_id = request.form.get('time_slot_id', type=int)
+            student_group_id = request.form.get('student_group_id', type=int)
+            
+            # Create temporary entry for conflict checking
+            temp_entry = Timetable(
+                course_id=course_id,
+                teacher_id=teacher_id,
+                classroom_id=classroom_id,
+                time_slot_id=time_slot_id,
+                student_group_id=student_group_id,
+                semester=timetable.semester,
+                academic_year=timetable.academic_year
+            )
+            
+            # Check for conflicts
+            conflicts = get_timetable_conflicts(temp_entry, exclude_id=timetable_id)
+            
+            if conflicts:
+                conflict_message = "Cannot update timetable due to conflicts:\n" + "\n".join(conflicts)
+                flash(conflict_message, 'error')
+                return render_template('admin/edit_timetable.html',
+                                     timetable=timetable,
+                                     courses=Course.query.all(),
+                                     teachers=User.query.filter_by(role='faculty').all(),
+                                     classrooms=Classroom.query.all(),
+                                     time_slots=TimeSlot.query.all(),
+                                     student_groups=StudentGroup.query.all())
+            
+            # Update timetable
+            timetable.course_id = course_id
+            timetable.teacher_id = teacher_id
+            timetable.classroom_id = classroom_id
+            timetable.time_slot_id = time_slot_id
+            timetable.student_group_id = student_group_id
+            
+            db.session.commit()
+            flash('Timetable updated successfully!', 'success')
+            return redirect(url_for('admin_timetable'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating timetable: {str(e)}', 'error')
+    
+    return render_template('admin/edit_timetable.html',
+                         timetable=timetable,
+                         courses=Course.query.all(),
+                         teachers=User.query.filter_by(role='faculty').all(),
+                         classrooms=Classroom.query.all(),
+                         time_slots=TimeSlot.query.all(),
+                         student_groups=StudentGroup.query.all())
+
+@app.route('/admin/delete_timetable/<int:timetable_id>', methods=['POST'])
+@login_required
+def admin_delete_timetable(timetable_id):
+    """Delete a timetable entry"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    try:
+        timetable = Timetable.query.get_or_404(timetable_id)
+        db.session.delete(timetable)
+        db.session.commit()
+        flash('Timetable entry deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting timetable: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_timetable'))
+
+@app.route('/admin/add_timetable', methods=['GET', 'POST'])
+@login_required
+def admin_add_timetable():
+    """Add a new timetable entry manually"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            course_id = request.form.get('course_id', type=int)
+            teacher_id = request.form.get('teacher_id', type=int)
+            classroom_id = request.form.get('classroom_id', type=int)
+            time_slot_id = request.form.get('time_slot_id', type=int)
+            student_group_id = request.form.get('student_group_id', type=int)
+            semester = request.form.get('semester', 'Fall 2024')
+            academic_year = request.form.get('academic_year', '2024-25')
+            
+            # Create new entry
+            new_timetable = Timetable(
+                course_id=course_id,
+                teacher_id=teacher_id,
+                classroom_id=classroom_id,
+                time_slot_id=time_slot_id,
+                student_group_id=student_group_id,
+                semester=semester,
+                academic_year=academic_year
+            )
+            
+            # Check for conflicts
+            conflicts = get_timetable_conflicts(new_timetable)
+            
+            if conflicts:
+                conflict_message = "Cannot add timetable due to conflicts:\n" + "\n".join(conflicts)
+                flash(conflict_message, 'error')
+                return render_template('admin/add_timetable.html',
+                                     courses=Course.query.all(),
+                                     teachers=User.query.filter_by(role='faculty').all(),
+                                     classrooms=Classroom.query.all(),
+                                     time_slots=TimeSlot.query.all(),
+                                     student_groups=StudentGroup.query.all())
+            
+            db.session.add(new_timetable)
+            db.session.commit()
+            flash('Timetable entry added successfully!', 'success')
+            return redirect(url_for('admin_timetable'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding timetable: {str(e)}', 'error')
+    
+    return render_template('admin/add_timetable.html',
+                         courses=Course.query.all(),
+                         teachers=User.query.filter_by(role='faculty').all(),
+                         classrooms=Classroom.query.all(),
+                         time_slots=TimeSlot.query.all(),
+                         student_groups=StudentGroup.query.all())
+
+@app.route('/admin/manage_breaks', methods=['GET', 'POST'])
+@login_required
+def admin_manage_breaks():
+    """Manage break times in time slots"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    if request.method == 'POST':
+        try:
+            action = request.form.get('action')
+            
+            if action == 'add_break':
+                day = request.form.get('day')
+                start_time = request.form.get('start_time')
+                end_time = request.form.get('end_time')
+                break_type = request.form.get('break_type', 'Break')
+                
+                # Create new break time slot
+                break_slot = TimeSlot(
+                    day=day,
+                    start_time=start_time,
+                    end_time=end_time,
+                    break_type=break_type
+                )
+                db.session.add(break_slot)
+                
+            elif action == 'update_break':
+                slot_id = request.form.get('slot_id', type=int)
+                slot = TimeSlot.query.get_or_404(slot_id)
+                slot.break_type = request.form.get('break_type', 'Break')
+                
+            elif action == 'delete_break':
+                slot_id = request.form.get('slot_id', type=int)
+                slot = TimeSlot.query.get_or_404(slot_id)
+                
+                # Only allow deletion of break slots
+                if slot.break_type != 'none':
+                    db.session.delete(slot)
+                else:
+                    flash('Cannot delete regular time slots', 'error')
+                    return redirect(url_for('admin_manage_breaks'))
+            
+            db.session.commit()
+            flash('Break time updated successfully!', 'success')
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error managing breaks: {str(e)}', 'error')
+    
+    # Get all time slots sorted by day and time
+    time_slots = TimeSlot.query.order_by(TimeSlot.day, TimeSlot.start_time).all()
+    
+    return render_template('admin/manage_breaks.html', time_slots=time_slots)
 
 @app.route('/admin/group_timetable/<int:group_id>')
 @login_required
@@ -1313,7 +1477,7 @@ def admin_manage_group_courses(group_id):
 # Faculty Routes
 @app.route('/faculty/take_attendance/<int:timetable_id>')
 @login_required
-def take_attendance(timetable_id):
+def faculty_take_attendance(timetable_id):
     if current_user.role != 'faculty':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
@@ -1502,6 +1666,7 @@ def faculty_all_attendance():
 @app.route('/student/timetable')
 @login_required
 def student_timetable():
+    """Show student's comprehensive timetable with calendar and list views"""
     if current_user.role != 'student':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
@@ -1511,6 +1676,11 @@ def student_timetable():
         return redirect(url_for('student_dashboard'))
     
     try:
+        # Get all time slots to show breaks
+        all_time_slots = TimeSlot.query.filter(
+            TimeSlot.day.in_(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+        ).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        
         # Get student's group timetable with proper joins
         timetables = db.session.query(Timetable).options(
             db.joinedload(Timetable.time_slot),
@@ -1518,30 +1688,84 @@ def student_timetable():
             db.joinedload(Timetable.classroom),
             db.joinedload(Timetable.teacher),
             db.joinedload(Timetable.student_group)
-        ).join(TimeSlot).join(Course).join(Classroom).join(User, Timetable.teacher_id == User.id).filter(
+        ).filter(
             Timetable.student_group_id == current_user.group_id
-        ).order_by(
-            db.case(
-                (TimeSlot.day == 'Monday', 1),
-                (TimeSlot.day == 'Tuesday', 2),
-                (TimeSlot.day == 'Wednesday', 3),
-                (TimeSlot.day == 'Thursday', 4),
-                (TimeSlot.day == 'Friday', 5),
-                else_=6
-            ),
-            TimeSlot.start_time
         ).all()
+        
+        # Group by day and time for better display
+        timetable_by_day = {}
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        
+        # Initialize all days with empty lists and add time slot information
+        for day in days:
+            timetable_by_day[day] = []
+            # Add time slot information for breaks
+            for time_slot in all_time_slots:
+                if time_slot.day == day:
+                    timetable_by_day[day].append({
+                        'start_time': time_slot.start_time,
+                        'end_time': time_slot.end_time,
+                        'break_type': time_slot.break_type,
+                        'is_time_slot': True
+                    })
+        
+        # Add timetable entries
+        for entry in timetables:
+            time_slot = entry.time_slot
+            if not time_slot or time_slot.day not in days:
+                continue
+                
+            day = time_slot.day
+            
+            # Get additional information
+            course = entry.course
+            classroom = entry.classroom
+            teacher = entry.teacher
+            
+            # Find and update the existing time slot entry
+            for slot in timetable_by_day[day]:
+                if (slot['start_time'] == time_slot.start_time and 
+                    slot['end_time'] == time_slot.end_time):
+                    # Update with class information
+                    slot.update({
+                        'id': entry.id,
+                        'course_code': course.code if course else 'Unknown',
+                        'course_name': course.name if course else 'Unknown',
+                        'classroom': classroom.room_number if classroom else 'Unknown',
+                        'building': classroom.building if classroom else 'Unknown',
+                        'teacher_name': teacher.name if teacher else 'Unknown',
+                        'teacher_department': teacher.department if teacher else 'Unknown',
+                        'semester': entry.semester,
+                        'academic_year': entry.academic_year,
+                        'is_time_slot': False  # Now it's a class
+                    })
+                    break
+        
+        # Sort each day by start time
+        for day in timetable_by_day:
+            timetable_by_day[day].sort(key=lambda x: x['start_time'])
+        
+
+        
+        # Get unique time slots for calendar view
+        time_slots = []
+        for time_slot in all_time_slots:
+            time_range = f"{time_slot.start_time}-{time_slot.end_time}"
+            if time_range not in time_slots:
+                time_slots.append(time_range)
         
         # Get student's group info
         student_group = StudentGroup.query.get(current_user.group_id)
                 
     except Exception as e:
         flash(f'Error loading timetable data: {str(e)}', 'error')
-        timetables = []
+        timetable_by_day = {}
+        time_slots = []
         student_group = None
     
     return render_template('student/timetable.html', 
-                         timetables=timetables,
+                         timetable_by_day=timetable_by_day,
+                         time_slots=time_slots,
                          student_group=student_group)
 
 @app.route('/student/attendance_history')
@@ -1590,7 +1814,7 @@ def student_attendance_history():
                          attendance_records=attendance_records,
                          course_stats=course_stats)
 
-@app.route('/student/profile')
+@app.route('/student/profile', methods=['GET', 'POST'])
 @login_required
 def student_profile():
     if current_user.role != 'student':
@@ -1598,6 +1822,36 @@ def student_profile():
         return redirect(url_for('dashboard'))
     
     try:
+        if request.method == 'POST':
+            action = request.form.get('action')
+            
+            if action == 'change_password':
+                current_password = request.form.get('current_password')
+                new_password = request.form.get('new_password')
+                confirm_password = request.form.get('confirm_password')
+                
+                if not check_password_hash(current_user.password_hash, current_password):
+                    flash('Current password is incorrect', 'error')
+                elif new_password != confirm_password:
+                    flash('New passwords do not match', 'error')
+                elif len(new_password) < 6:
+                    flash('New password must be at least 6 characters long', 'error')
+                else:
+                    current_user.password_hash = generate_password_hash(new_password)
+                    db.session.commit()
+                    flash('Password updated successfully', 'success')
+            else:
+                # Update profile information
+                current_user.name = request.form.get('name')
+                current_user.email = request.form.get('email')
+                current_user.phone = request.form.get('phone')
+                current_user.address = request.form.get('address')
+                
+                db.session.commit()
+                flash('Profile updated successfully', 'success')
+            
+            return redirect(url_for('student_profile'))
+        
         return render_template('student/profile.html', user=current_user)
         
     except Exception as e:
@@ -1705,136 +1959,9 @@ def is_teacher_qualified(teacher, subject_area):
     
     return True  # Default to allowing if no specific mapping
 
-# Timetable Management Routes
-@app.route('/admin/add_timetable_entry', methods=['POST'])
-@login_required
-def admin_add_timetable_entry():
-    if current_user.role != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        # Validate and sanitize input
-        course_id = request.form.get('course_id')
-        teacher_id = request.form.get('teacher_id')
-        classroom_id = request.form.get('classroom_id')
-        time_slot_id = request.form.get('time_slot_id')
-        semester = request.form.get('semester', '')
-        academic_year = request.form.get('academic_year', '')
-        
-        # Check if all required fields are present
-        if not all([course_id, teacher_id, classroom_id, time_slot_id, semester, academic_year]):
-            flash('All fields are required', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Convert to integers and validate
-        try:
-            course_id = int(course_id)
-            teacher_id = int(teacher_id)
-            classroom_id = int(classroom_id)
-            time_slot_id = int(time_slot_id)
-        except ValueError:
-            flash('Invalid ID values provided', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Check if teacher is qualified for this course
-        course = Course.query.get(course_id)
-        teacher = User.query.get(teacher_id)
-        classroom = Classroom.query.get(classroom_id)
-        
-        if not course or not teacher or not classroom:
-            flash('Invalid course, teacher, or classroom selected', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Check if teacher is qualified for this subject
-        if not is_teacher_qualified(teacher, course.subject_area):
-            flash(f'Teacher {teacher.name} is not qualified to teach {course.subject_area}', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Check classroom capacity constraint
-        if classroom.capacity < course.min_capacity:
-            flash(f'Classroom {classroom.room_number} capacity ({classroom.capacity}) is less than required minimum ({course.min_capacity})', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Check equipment constraints
-        if course.required_equipment:
-            required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',') if eq.strip()]
-            classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',') if eq.strip()]
-            
-            # More flexible equipment matching - check if any required equipment is available
-            missing_equipment = []
-            for req_eq in required_equipment:
-                if req_eq:  # Skip empty strings
-                    # Check if any classroom equipment contains the required equipment
-                    equipment_found = any(req_eq in eq or eq in req_eq for eq in classroom_equipment)
-                    if not equipment_found:
-                        missing_equipment.append(req_eq)
-            
-            if missing_equipment:
-                flash(f'Classroom {classroom.room_number} is missing required equipment: {", ".join(missing_equipment)}', 'error')
-                return redirect(url_for('admin_timetable'))
-        
-        # Check for conflicts
-        existing = Timetable.query.filter_by(
-            classroom_id=classroom_id,
-            time_slot_id=time_slot_id,
-            academic_year=academic_year,
-            semester=semester
-        ).first()
-        
-        if existing:
-            flash('Classroom is already booked for this time slot', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        # Check teacher availability
-        teacher_conflict = Timetable.query.filter_by(
-            teacher_id=teacher_id,
-            time_slot_id=time_slot_id,
-            academic_year=academic_year,
-            semester=semester
-        ).first()
-        
-        if teacher_conflict:
-            flash('Teacher is already assigned to another class at this time', 'error')
-            return redirect(url_for('admin_timetable'))
-        
-        new_timetable = Timetable(
-            course_id=course_id,
-            teacher_id=teacher_id,
-            classroom_id=classroom_id,
-            time_slot_id=time_slot_id,
-            student_group_id=request.form.get('student_group_id'),  # Add this field
-            semester=semester,
-            academic_year=academic_year
-        )
-        
-        db.session.add(new_timetable)
-        db.session.commit()
-        flash('Timetable entry added successfully', 'success')
-        
-    except Exception as e:
-        flash(f'Error adding timetable entry: {str(e)}', 'error')
-    
-    return redirect(url_for('admin_timetable'))
 
-@app.route('/admin/delete_timetable/<int:timetable_id>', methods=['POST'])
-@login_required
-def admin_delete_timetable(timetable_id):
-    if current_user.role != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        timetable = Timetable.query.get_or_404(timetable_id)
-        db.session.delete(timetable)
-        db.session.commit()
-        flash('Timetable entry deleted successfully', 'success')
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error deleting timetable entry: {str(e)}', 'error')
-    
-    return redirect(url_for('admin_timetable'))
+
+
 
 # Missing API and utility routes
 @app.route('/api/dashboard-stats')
@@ -1896,40 +2023,210 @@ def api_notifications():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/attendance-data')
+@app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
 @login_required
-def api_attendance_data():
-    """API endpoint for real-time attendance data"""
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
     try:
-        if current_user.role == 'faculty':
-            attendance_records = db.session.query(Attendance).options(
-                db.joinedload(Attendance.student),
-                db.joinedload(Attendance.timetable).joinedload(Timetable.course)
-            ).join(
-                Timetable, Attendance.timetable_id == Timetable.id
-            ).filter(
-                Timetable.teacher_id == current_user.id
-            ).order_by(Attendance.marked_at.desc()).limit(20).all()
+        notification = Notification.query.filter_by(
+            id=notification_id, 
+            user_id=current_user.id
+        ).first()
+        
+        if notification:
+            notification.read = True
+            db.session.commit()
+            return jsonify({'success': True})
         else:
-            attendance_records = db.session.query(Attendance).options(
-                db.joinedload(Attendance.timetable).joinedload(Timetable.course)
-            ).filter_by(
-                student_id=current_user.id
-            ).order_by(Attendance.marked_at.desc()).limit(20).all()
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/mark-all-read', methods=['POST'])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read for the current user"""
+    try:
+        Notification.query.filter_by(
+            user_id=current_user.id,
+            read=False
+        ).update({'read': True})
         
-        data = []
-        for record in attendance_records:
-            if record.student and record.timetable and record.timetable.course:
-                data.append({
-                    'id': record.id,
-                    'student': record.student.name,
-                    'course': record.timetable.course.name,
-                    'status': record.status,
-                    'date': record.date.strftime('%Y-%m-%d'),
-                    'marked_at': record.marked_at.strftime('%H:%M')
-                })
+        db.session.commit()
+        return jsonify({'success': True})
         
-        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/<int:notification_id>', methods=['DELETE'])
+@login_required
+def delete_notification(notification_id):
+    """Delete a notification"""
+    try:
+        notification = Notification.query.filter_by(
+            id=notification_id, 
+            user_id=current_user.id
+        ).first()
+        
+        if notification:
+            db.session.delete(notification)
+            db.session.commit()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/clear-all', methods=['DELETE'])
+@login_required
+def clear_all_notifications():
+    """Clear all notifications for the current user"""
+    try:
+        Notification.query.filter_by(user_id=current_user.id).delete()
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/<int:notification_id>', methods=['GET'])
+@login_required
+def get_notification(notification_id):
+    """Get a specific notification"""
+    try:
+        notification = Notification.query.filter_by(
+            id=notification_id, 
+            user_id=current_user.id
+        ).first()
+        
+        if notification:
+            return jsonify({
+                'success': True, 
+                'notification': {
+                    'id': notification.id,
+                    'title': notification.title,
+                    'message': notification.message,
+                    'type': notification.type,
+                    'read': notification.read,
+                    'created_at': notification.created_at.isoformat() if notification.created_at else None
+                }
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications', methods=['POST'])
+@login_required
+def create_notification():
+    """Create a new notification (admin only)"""
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        title = data.get('title')
+        message = data.get('message')
+        notification_type = data.get('type', 'info')
+        users = data.get('users', ['all'])
+        
+        if not title or not message:
+            return jsonify({'success': False, 'error': 'Title and message are required'}), 400
+        
+        # Create notifications for specified users
+        created_count = 0
+        
+        if 'all' in users:
+            # Send to all users
+            all_users = User.query.all()
+            for user in all_users:
+                notification = Notification(
+                    user_id=user.id,
+                    title=title,
+                    message=message,
+                    type=notification_type,
+                    read=False
+                )
+                db.session.add(notification)
+                created_count += 1
+        else:
+            # Send to specific user types
+            for user_type in users:
+                if user_type == 'faculty':
+                    faculty_users = User.query.filter_by(role='faculty').all()
+                    for user in faculty_users:
+                        notification = Notification(
+                            user_id=user.id,
+                            title=title,
+                            message=message,
+                            type=notification_type,
+                            read=False
+                        )
+                        db.session.add(notification)
+                        created_count += 1
+                elif user_type == 'students':
+                    student_users = User.query.filter_by(role='student').all()
+                    for user in student_users:
+                        notification = Notification(
+                            user_id=user.id,
+                            title=title,
+                            message=message,
+                            type=notification_type,
+                            read=False
+                        )
+                        db.session.add(notification)
+                        created_count += 1
+                elif user_type == 'admins':
+                    admin_users = User.query.filter_by(role='admin').all()
+                    for user in admin_users:
+                        notification = Notification(
+                            user_id=user.id,
+                            title=title,
+                            message=message,
+                            type=notification_type,
+                            read=False
+                        )
+                        db.session.add(notification)
+                        created_count += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Created {created_count} notifications'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/<int:notification_id>', methods=['PUT'])
+@login_required
+def update_notification(notification_id):
+    """Update a notification (admin only)"""
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        notification = Notification.query.get(notification_id)
+        if not notification:
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if 'title' in data:
+            notification.title = data['title']
+        if 'message' in data:
+            notification.message = data['message']
+        if 'type' in data:
+            notification.type = data['type']
+        
+        db.session.commit()
+        return jsonify({'success': True})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -2145,73 +2442,7 @@ def admin_delete_time_slot(time_slot_id):
     
     return redirect(url_for('admin_time_slots'))
 
-@app.route('/admin/edit_timetable/<int:timetable_id>', methods=['GET', 'POST'])
-@login_required
-def admin_edit_timetable(timetable_id):
-    """Edit timetable entry"""
-    if current_user.role != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        timetable = Timetable.query.get_or_404(timetable_id)
-        
-        if request.method == 'POST':
-            try:
-                # Validate and sanitize input
-                course_id = request.form.get('course_id')
-                teacher_id = request.form.get('teacher_id')
-                classroom_id = request.form.get('classroom_id')
-                time_slot_id = request.form.get('time_slot_id')
-                semester = request.form.get('semester', '')
-                academic_year = request.form.get('academic_year', '')
-                
-                # Check if all required fields are present
-                if not all([course_id, teacher_id, classroom_id, time_slot_id, semester, academic_year]):
-                    flash('All fields are required', 'error')
-                    return redirect(url_for('admin_edit_timetable', timetable_id=timetable_id))
-                
-                # Convert to integers and validate
-                try:
-                    course_id = int(course_id)
-                    teacher_id = int(teacher_id)
-                    classroom_id = int(classroom_id)
-                    time_slot_id = int(time_slot_id)
-                except ValueError:
-                    flash('Invalid ID values provided', 'error')
-                    return redirect(url_for('admin_edit_timetable', timetable_id=timetable_id))
-                
-                timetable.course_id = course_id
-                timetable.teacher_id = teacher_id
-                timetable.classroom_id = classroom_id
-                timetable.time_slot_id = time_slot_id
-                timetable.semester = semester
-                timetable.academic_year = academic_year
-                
-                db.session.commit()
-                flash('Timetable updated successfully', 'success')
-                return redirect(url_for('admin_timetable'))
-                
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error updating timetable: {str(e)}', 'error')
-        
-        # Get data for form
-        courses = Course.query.all()
-        teachers = User.query.filter_by(role='faculty').all()
-        classrooms = Classroom.query.all()
-        time_slots = TimeSlot.query.all()
-        
-        return render_template('admin/edit_timetable.html', 
-                             timetable=timetable,
-                             courses=courses,
-                             teachers=teachers,
-                             classrooms=classrooms,
-                             time_slots=time_slots)
-                             
-    except Exception as e:
-        flash(f'Error loading timetable: {str(e)}', 'error')
-        return redirect(url_for('admin_timetable'))
+
 
 # Initialize database
 def init_db():
@@ -2652,26 +2883,26 @@ def admin_generate_timetables():
             
             # Now check for internal conflicts within the generated timetables
             conflicts_found = []
-            global_classroom_usage = {}  # (day, time) -> classroom_id
-            global_teacher_usage = {}    # (day, time) -> teacher_id
+            global_classroom_usage = defaultdict(list)  # (day, time) -> [classroom_id]
+            global_teacher_usage = defaultdict(list)    # (day, time) -> [teacher_id]
             
             for group_id, entries in generated_timetables.items():
                 for entry in entries:
                     slot_key = (entry.day, entry.start_time)
                     
                     # Check for classroom conflicts within generated data
-                    if slot_key in global_classroom_usage:
+                    if entry.classroom_id in global_classroom_usage[slot_key]:
                         conflicts_found.append(f"Classroom {entry.classroom_number} double-booked at {entry.day} {entry.start_time}")
                         continue
                     
                     # Check for teacher conflicts within generated data
-                    if slot_key in global_teacher_usage:
+                    if entry.teacher_id in global_teacher_usage[slot_key]:
                         conflicts_found.append(f"Teacher {entry.teacher_name} double-booked at {entry.day} {entry.start_time}")
                         continue
                     
                     # Mark as used
-                    global_classroom_usage[slot_key] = entry.classroom_id
-                    global_teacher_usage[slot_key] = entry.teacher_id
+                    global_classroom_usage[slot_key].append(entry.classroom_id)
+                    global_teacher_usage[slot_key].append(entry.teacher_id)
             
             if conflicts_found:
                 # Try to regenerate with stricter constraints
@@ -2689,6 +2920,10 @@ def admin_generate_timetables():
                     time_slot = TimeSlot.query.get(entry.time_slot_id)
                     
                     if all([course, teacher, classroom, time_slot]):
+                        # If this time slot was previously a break, convert it back to a regular time slot
+                        if time_slot.break_type != 'none':
+                            time_slot.break_type = 'none'
+                        
                         timetable = Timetable(
                             course_id=entry.course_id,
                             teacher_id=entry.teacher_id,
@@ -2705,7 +2940,31 @@ def admin_generate_timetables():
             
             db.session.commit()
             
-            flash(f'Timetables generated successfully! {timetables_added} entries scheduled for {len(generated_timetables)} groups.', 'success')
+            # Get statistics about the generated timetables
+            stats = generator.get_timetable_statistics()
+            
+            # Create a comprehensive summary message
+            time_slot_summary = []
+            for slot_key, count in sorted(stats['time_slot_usage'].items(), key=lambda x: (x[0][0], x[0][1])):
+                day, time = slot_key
+                time_slot_summary.append(f"{day} {time}: {count} classes")
+            
+            # Create detailed success message
+            success_details = {
+                'total_groups': len(generated_timetables),
+                'total_classes': timetables_added,
+                'time_slots_used': len(stats['time_slot_usage']),
+                'max_classes_per_slot': max(stats['time_slot_usage'].values()) if stats['time_slot_usage'] else 0,
+                'time_slot_breakdown': time_slot_summary
+            }
+            
+            # Store detailed results in session for persistent display
+            session['timetable_generation_results'] = success_details
+            
+            # Show immediate success message
+            flash(f"✅ Timetables generated successfully! {timetables_added} entries scheduled for {len(generated_timetables)} groups. "
+                  f"Maximum classes per time slot: {success_details['max_classes_per_slot']}. "
+                  f"View detailed results below.", 'success')
             
             # Clean up generator to free memory
             generator.cleanup()
@@ -2734,6 +2993,7 @@ def faculty_timetable():
         return redirect(url_for('dashboard'))
     
     try:
+        
         # Get all timetables for this faculty member with proper joins
         faculty_timetables = db.session.query(Timetable).options(
             db.joinedload(Timetable.time_slot),
@@ -2742,42 +3002,73 @@ def faculty_timetable():
             db.joinedload(Timetable.student_group)
         ).filter_by(teacher_id=current_user.id).all()
         
+        # Get all time slots to show breaks
+        all_time_slots = TimeSlot.query.filter(
+            TimeSlot.day.in_(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+        ).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        
         # Group by day and time for better display
         timetable_by_day = {}
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        
+        # Initialize all days with empty lists and add time slot information
+        for day in days:
+            timetable_by_day[day] = []
+            # Add time slot information for breaks
+            for time_slot in all_time_slots:
+                if time_slot.day == day:
+                    timetable_by_day[day].append({
+                        'start_time': time_slot.start_time,
+                        'end_time': time_slot.end_time,
+                        'break_type': time_slot.break_type,
+                        'is_time_slot': True
+                    })
+        
+        # Add timetable entries
         for entry in faculty_timetables:
-            # Get the time slot information
             time_slot = entry.time_slot
-            if not time_slot:
+            if not time_slot or time_slot.day not in days:
                 continue
                 
             day = time_slot.day
-            if day not in timetable_by_day:
-                timetable_by_day[day] = []
             
             # Get additional information
             course = entry.course
             classroom = entry.classroom
             student_group = entry.student_group
             
-            timetable_by_day[day].append({
-                'id': entry.id,
-                'course_code': course.code if course else 'Unknown',
-                'course_name': course.name if course else 'Unknown',
-                'classroom': classroom.room_number if classroom else 'Unknown',
-                'building': classroom.building if classroom else 'Unknown',
-                'start_time': time_slot.start_time,
-                'end_time': time_slot.end_time,
-                'student_group': student_group.name if student_group else 'Unknown',
-                'semester': entry.semester,
-                'academic_year': entry.academic_year
-            })
+            # Find and update the existing time slot entry
+            for slot in timetable_by_day[day]:
+                if (slot['start_time'] == time_slot.start_time and 
+                    slot['end_time'] == time_slot.end_time):
+                    # Update with class information
+                    slot.update({
+                        'id': entry.id,
+                        'course_code': course.code if course else 'Unknown',
+                        'course_name': course.name if course else 'Unknown',
+                        'classroom': classroom.room_number if classroom else 'Unknown',
+                        'building': classroom.building if classroom else 'Unknown',
+                        'student_group': student_group.name if student_group else 'Unknown',
+                        'semester': entry.semester,
+                        'academic_year': entry.academic_year,
+                        'is_time_slot': False  # Now it's a class
+                    })
+                    break
         
         # Sort each day by start time
         for day in timetable_by_day:
             timetable_by_day[day].sort(key=lambda x: x['start_time'])
         
+        # Get unique time slots for calendar view
+        time_slots = []
+        for time_slot in all_time_slots:
+            time_range = f"{time_slot.start_time}-{time_slot.end_time}"
+            if time_range not in time_slots:
+                time_slots.append(time_range)
+        
         return render_template('faculty/timetable.html', 
                              timetable_by_day=timetable_by_day,
+                             time_slots=time_slots,
                              faculty_name=current_user.name)
                              
     except Exception as e:
@@ -3024,114 +3315,239 @@ def admin_export_timetables():
         flash(f'Error exporting timetables: {str(e)}', 'error')
         return redirect(url_for('admin_timetable'))
 
-@app.route('/faculty/my_timetable')
+
+
+
+
+def sort_timetables_by_time(timetables):
+    """Sort timetables by day and time for consistent display order"""
+    # Define day order
+    day_order = {
+        'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
+    }
+    
+    def sort_key(entry):
+        time_slot = entry.time_slot
+        if not time_slot:
+            return (999, '00:00')  # Put entries without time slots at the end
+        return (day_order.get(time_slot.day, 999), time_slot.start_time)
+    
+    return sorted(timetables, key=sort_key)
+
+def get_timetable_conflicts(timetable_entry, exclude_id=None):
+    """Check if a timetable entry conflicts with existing entries"""
+    conflicts = []
+    
+    # Check for classroom conflicts
+    classroom_conflicts = Timetable.query.filter(
+        Timetable.classroom_id == timetable_entry.classroom_id,
+        Timetable.time_slot_id == timetable_entry.time_slot_id,
+        Timetable.semester == timetable_entry.semester,
+        Timetable.academic_year == timetable_entry.academic_year
+    )
+    if exclude_id:
+        classroom_conflicts = classroom_conflicts.filter(Timetable.id != exclude_id)
+    
+    if classroom_conflicts.count() > 0:
+        # Get classroom info for the conflict message
+        classroom = Classroom.query.get(timetable_entry.classroom_id)
+        classroom_name = classroom.room_number if classroom else f"ID:{timetable_entry.classroom_id}"
+        conflicts.append(f"Classroom {classroom_name} is already booked at this time")
+    
+    # Check for teacher conflicts
+    teacher_conflicts = Timetable.query.filter(
+        Timetable.teacher_id == timetable_entry.teacher_id,
+        Timetable.time_slot_id == timetable_entry.time_slot_id,
+        Timetable.semester == timetable_entry.semester,
+        Timetable.academic_year == timetable_entry.academic_year
+    )
+    if exclude_id:
+        teacher_conflicts = teacher_conflicts.filter(Timetable.id != exclude_id)
+    
+    if teacher_conflicts.count() > 0:
+        # Get teacher info for the conflict message
+        teacher = User.query.get(timetable_entry.teacher_id)
+        teacher_name = teacher.name if teacher else f"ID:{timetable_entry.teacher_id}"
+        conflicts.append(f"Teacher {teacher_name} is already booked at this time")
+    
+    # Check for student group conflicts (same group can't have multiple classes at same time)
+    group_conflicts = Timetable.query.filter(
+        Timetable.student_group_id == timetable_entry.student_group_id,
+        Timetable.time_slot_id == timetable_entry.time_slot_id,
+        Timetable.semester == timetable_entry.semester,
+        Timetable.academic_year == timetable_entry.academic_year
+    )
+    if exclude_id:
+        group_conflicts = group_conflicts.filter(Timetable.id != exclude_id)
+    
+    if group_conflicts.count() > 0:
+        # Get student group info for the conflict message
+        group = StudentGroup.query.get(timetable_entry.student_group_id)
+        group_name = group.name if group else f"ID:{timetable_entry.student_group_id}"
+        conflicts.append(f"Student group {group_name} already has a class at this time")
+    
+    return conflicts
+
+@app.route('/admin/clear_generation_results')
 @login_required
-def faculty_my_timetable():
-    """Show faculty member's personal timetable"""
+def admin_clear_generation_results():
+    """Clear timetable generation results from session"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_timetable'))
+    
+    if 'timetable_generation_results' in session:
+        del session['timetable_generation_results']
+        flash('Generation results cleared successfully!', 'success')
+    
+    return redirect(url_for('admin_timetable'))
+
+@app.route('/faculty/profile', methods=['GET', 'POST'])
+@login_required
+def faculty_profile():
     if current_user.role != 'faculty':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
     try:
-        # Get faculty's timetable with proper joins
-        faculty_timetables = db.session.query(
-            Timetable, Course, Classroom, TimeSlot
-        ).options(
-            db.joinedload(Timetable.course),
-            db.joinedload(Timetable.classroom),
-            db.joinedload(Timetable.time_slot)
-        ).join(
-            Course, Timetable.course_id == Course.id
-        ).join(
-            Classroom, Timetable.classroom_id == Classroom.id
-        ).join(
-            TimeSlot, Timetable.time_slot_id == TimeSlot.id
-        ).filter(
-            Timetable.teacher_id == current_user.id
-        ).order_by(
-            TimeSlot.day, TimeSlot.start_time
-        ).all()
+        if request.method == 'POST':
+            action = request.form.get('action')
+            
+            if action == 'change_password':
+                current_password = request.form.get('current_password')
+                new_password = request.form.get('new_password')
+                confirm_password = request.form.get('confirm_password')
+                
+                if not check_password_hash(current_user.password_hash, current_password):
+                    flash('Current password is incorrect', 'error')
+                elif new_password != confirm_password:
+                    flash('New passwords do not match', 'error')
+                elif len(new_password) < 6:
+                    flash('New password must be at least 6 characters long', 'error')
+                else:
+                    current_user.password_hash = generate_password_hash(new_password)
+                    db.session.commit()
+                    flash('Password updated successfully', 'success')
+            else:
+                # Update profile information
+                current_user.name = request.form.get('name')
+                current_user.email = request.form.get('email')
+                current_user.department = request.form.get('department')
+                current_user.phone = request.form.get('phone')
+                current_user.qualifications = request.form.get('qualifications')
+                current_user.experience = request.form.get('experience')
+                current_user.bio = request.form.get('bio')
+                
+                db.session.commit()
+                flash('Profile updated successfully', 'success')
+            
+            return redirect(url_for('faculty_profile'))
         
-        # Group by day
-        timetable_by_day = {}
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-        
-        for day in days:
-            timetable_by_day[day] = []
-        
-        for timetable, course, classroom, time_slot in faculty_timetables:
-            if time_slot.day in timetable_by_day:
-                timetable_by_day[time_slot.day].append({
-                    'time': f"{time_slot.start_time}-{time_slot.end_time}",
-                    'course': f"{course.code} - {course.name}",
-                    'classroom': classroom.room_number,
-                    'building': classroom.building
-                })
-        
-        return render_template('faculty/my_timetable.html', timetable_by_day=timetable_by_day)
+        return render_template('faculty/profile.html', user=current_user)
         
     except Exception as e:
-        flash(f'Error loading timetable: {str(e)}', 'error')
+        flash(f'Error loading profile: {str(e)}', 'error')
         return redirect(url_for('faculty_dashboard'))
 
-@app.route('/student/my_timetable')
+@app.route('/admin/profile', methods=['GET', 'POST'])
 @login_required
-def student_my_timetable():
-    """Show student's personal timetable"""
+def admin_profile():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        if request.method == 'POST':
+            action = request.form.get('action')
+            
+            if action == 'change_password':
+                current_password = request.form.get('current_password')
+                new_password = request.form.get('new_password')
+                confirm_password = request.form.get('confirm_password')
+                
+                if not check_password_hash(current_user.password_hash, current_password):
+                    flash('Current password is incorrect', 'error')
+                elif new_password != confirm_password:
+                    flash('New passwords do not match', 'error')
+                elif len(new_password) < 6:
+                    flash('New password must be at least 6 characters long', 'error')
+                else:
+                    current_user.password_hash = generate_password_hash(new_password)
+                    db.session.commit()
+                    flash('Password updated successfully', 'success')
+            else:
+                # Update profile information
+                current_user.name = request.form.get('name')
+                current_user.email = request.form.get('email')
+                current_user.department = request.form.get('department')
+                current_user.phone = request.form.get('phone')
+                current_user.bio = request.form.get('bio')
+                current_user.access_level = request.form.get('access_level')
+                
+                db.session.commit()
+                flash('Profile updated successfully', 'success')
+            
+            return redirect(url_for('admin_profile'))
+        
+        return render_template('admin/profile.html', user=current_user)
+        
+    except Exception as e:
+        flash(f'Error loading profile: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/student/notifications')
+@login_required
+def student_notifications():
     if current_user.role != 'student':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    if not current_user.group_id:
-        flash('You are not assigned to any student group', 'warning')
-        return redirect(url_for('student_dashboard'))
-    
     try:
-        # Get student's group timetable with proper joins
-        group_timetables = db.session.query(
-            Timetable, Course, User, Classroom, TimeSlot
-        ).options(
-            db.joinedload(Timetable.course),
-            db.joinedload(Timetable.teacher),
-            db.joinedload(Timetable.classroom),
-            db.joinedload(Timetable.time_slot)
-        ).join(
-            Course, Timetable.course_id == Course.id
-        ).join(
-            User, Timetable.teacher_id == User.id
-        ).join(
-            Classroom, Timetable.classroom_id == Classroom.id
-        ).join(
-            TimeSlot, Timetable.time_slot_id == TimeSlot.id
-        ).filter(
-            Timetable.student_group_id == current_user.group_id
-        ).order_by(
-            TimeSlot.day, TimeSlot.start_time
+        notifications = Notification.query.filter_by(user_id=current_user.id).order_by(
+            Notification.created_at.desc()
         ).all()
         
-        # Group by day
-        timetable_by_day = {}
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-        
-        for day in days:
-            timetable_by_day[day] = []
-        
-        for timetable, course, teacher, classroom, time_slot in group_timetables:
-            if time_slot.day in timetable_by_day:
-                timetable_by_day[time_slot.day].append({
-                    'time': f"{time_slot.start_time}-{time_slot.end_time}",
-                    'course': f"{course.code} - {course.name}",
-                    'teacher': teacher.name,
-                    'classroom': classroom.room_number,
-                    'building': classroom.building
-                })
-        
-        return render_template('student/my_timetable.html', timetable_by_day=timetable_by_day)
+        return render_template('student/notifications.html', notifications=notifications)
         
     except Exception as e:
-        flash(f'Error loading timetable: {str(e)}', 'error')
+        flash(f'Error loading notifications: {str(e)}', 'error')
         return redirect(url_for('student_dashboard'))
 
+@app.route('/faculty/notifications')
+@login_required
+def faculty_notifications():
+    if current_user.role != 'faculty':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        notifications = Notification.query.filter_by(user_id=current_user.id).order_by(
+            Notification.created_at.desc()
+        ).all()
+        
+        return render_template('faculty/notifications.html', notifications=notifications)
+        
+    except Exception as e:
+        flash(f'Error loading notifications: {str(e)}', 'error')
+        return redirect(url_for('faculty_dashboard'))
+
+@app.route('/admin/notifications')
+@login_required
+def admin_notifications():
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        notifications = Notification.query.filter_by(user_id=current_user.id).order_by(
+            Notification.created_at.desc()
+        ).all()
+        
+        return render_template('admin/notifications.html', notifications=notifications)
+        
+    except Exception as e:
+        flash(f'Error loading notifications: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
