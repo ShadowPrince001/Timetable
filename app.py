@@ -3960,5 +3960,56 @@ def api_timeslot(timeslot_id):
         }
     })
 
+# Temporary route for Render database initialization
+@app.route('/init-db')
+def init_database():
+    """Temporary route to initialize database tables on Render"""
+    try:
+        # Check if we're on Render (PostgreSQL)
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL not found. Are you on Render?'
+            })
+        
+        if 'postgresql' in database_url or 'postgres' in database_url:
+            # Create all tables
+            with app.app_context():
+                db.create_all()
+                
+                # Verify tables were created
+                inspector = db.inspect(db.engine)
+                tables = inspector.get_table_names()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Database tables created successfully!',
+                    'tables_created': len(tables),
+                    'table_names': tables,
+                    'next_steps': [
+                        'Tables are now created on Render',
+                        'Download your migration script',
+                        'Run migration to populate data',
+                        'Test your app on Render'
+                    ]
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Not connected to PostgreSQL. Are you on Render?'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/init-db-page')
+def init_database_page():
+    """Page to initialize database tables on Render"""
+    return render_template('init_db.html')
+
 if __name__ == '__main__':
     app.run(debug=True)
