@@ -25,7 +25,13 @@ def init_sample_data():
             password_hash=generate_password_hash('admin123'),
             role='admin',
             name='Dr. Rajesh Kumar',
-            department='IT'
+            department='IT',
+            phone='+91-9876543210',
+            address='Admin Block, Room 101, Institution Campus',
+            qualifications='Ph.D. in Information Technology',
+            experience=15,
+            bio='Senior Administrator with expertise in educational management',
+            access_level='super_admin'
         )
         db.session.add(admin)
         
@@ -37,7 +43,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Dr. Priya Sharma',
-                'department': 'Computer Science'
+                'department': 'Computer Science',
+                'phone': '+91-9876543211',
+                'address': 'CS Department, Room 201, Main Block',
+                'qualifications': 'Ph.D. in Computer Science, M.Tech in Software Engineering',
+                'experience': 8,
+                'bio': 'Expert in Data Structures, Algorithms, and Software Engineering'
             },
             {
                 'username': 'prof_verma',
@@ -45,7 +56,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Prof. Amit Verma',
-                'department': 'Computer Science'
+                'department': 'Computer Science',
+                'phone': '+91-9876543212',
+                'address': 'CS Department, Room 202, Main Block',
+                'qualifications': 'Ph.D. in Computer Science, M.Tech in Computer Networks',
+                'experience': 12,
+                'bio': 'Specialist in Computer Networks and Distributed Systems'
             },
             {
                 'username': 'dr_patel',
@@ -53,7 +69,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Dr. Sneha Patel',
-                'department': 'Electrical Engineering'
+                'department': 'Electrical Engineering',
+                'phone': '+91-9876543213',
+                'address': 'EE Department, Room 301, Engineering Block',
+                'qualifications': 'Ph.D. in Electrical Engineering, M.Tech in Power Systems',
+                'experience': 10,
+                'bio': 'Expert in Power Systems and Control Engineering'
             },
             {
                 'username': 'prof_singh',
@@ -61,7 +82,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Prof. Harpreet Singh',
-                'department': 'Mechanical Engineering'
+                'department': 'Mechanical Engineering',
+                'phone': '+91-9876543214',
+                'address': 'ME Department, Room 401, Engineering Block',
+                'qualifications': 'Ph.D. in Mechanical Engineering, M.Tech in Machine Design',
+                'experience': 14,
+                'bio': 'Specialist in Machine Design and Manufacturing Processes'
             },
             {
                 'username': 'dr_gupta',
@@ -69,7 +95,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Dr. Anjali Gupta',
-                'department': 'Civil Engineering'
+                'department': 'Civil Engineering',
+                'phone': '+91-9876543215',
+                'address': 'CE Department, Room 501, Engineering Block',
+                'qualifications': 'Ph.D. in Civil Engineering, M.Tech in Structural Engineering',
+                'experience': 11,
+                'bio': 'Expert in Structural Analysis and Design'
             },
             {
                 'username': 'prof_reddy',
@@ -77,7 +108,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Prof. Karthik Reddy',
-                'department': 'Information Technology'
+                'department': 'Information Technology',
+                'phone': '+91-9876543216',
+                'address': 'IT Department, Room 601, Main Block',
+                'qualifications': 'Ph.D. in Information Technology, M.Tech in Web Technologies',
+                'experience': 9,
+                'bio': 'Specialist in Web Development and Mobile Applications'
             },
             {
                 'username': 'dr_malhotra',
@@ -85,7 +121,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Dr. Ritu Malhotra',
-                'department': 'Electronics & Communication'
+                'department': 'Electronics & Communication',
+                'phone': '+91-9876543217',
+                'address': 'EC Department, Room 701, Engineering Block',
+                'qualifications': 'Ph.D. in Electronics, M.Tech in Communication Systems',
+                'experience': 13,
+                'bio': 'Expert in Digital Communication and VLSI Design'
             },
             {
                 'username': 'prof_khanna',
@@ -93,7 +134,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Prof. Vikram Khanna',
-                'department': 'Mathematics'
+                'department': 'Mathematics',
+                'phone': '+91-9876543218',
+                'address': 'Math Department, Room 801, Main Block',
+                'qualifications': 'Ph.D. in Mathematics, M.Sc. in Applied Mathematics',
+                'experience': 16,
+                'bio': 'Specialist in Engineering Mathematics and Numerical Methods'
             },
             {
                 'username': 'dr_iyer',
@@ -101,7 +147,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Dr. Meera Iyer',
-                'department': 'Physics'
+                'department': 'Physics',
+                'phone': '+91-9876543219',
+                'address': 'Physics Department, Room 901, Main Block',
+                'qualifications': 'Ph.D. in Physics, M.Sc. in Applied Physics',
+                'experience': 7,
+                'bio': 'Expert in Engineering Physics and Applied Sciences'
             },
             {
                 'username': 'prof_chopra',
@@ -109,7 +160,12 @@ def init_sample_data():
                 'password': 'faculty123',
                 'role': 'faculty',
                 'name': 'Prof. Arjun Chopra',
-                'department': 'Chemistry'
+                'department': 'Chemistry',
+                'phone': '+91-9876543220',
+                'address': 'Chemistry Department, Room 1001, Main Block',
+                'qualifications': 'Ph.D. in Chemistry, M.Sc. in Applied Chemistry',
+                'experience': 6,
+                'bio': 'Specialist in Engineering Chemistry and Materials Science'
             }
         ]
         
@@ -120,7 +176,12 @@ def init_sample_data():
                 password_hash=generate_password_hash(faculty_data['password']),
                 role=faculty_data['role'],
                 name=faculty_data['name'],
-                department=faculty_data['department']
+                department=faculty_data['department'],
+                phone=faculty_data['phone'],
+                address=faculty_data['address'],
+                qualifications=faculty_data['qualifications'],
+                experience=faculty_data['experience'],
+                bio=faculty_data['bio']
             )
             db.session.add(faculty)
         
@@ -141,18 +202,34 @@ def init_sample_data():
             password_hash=generate_password_hash('student123'),
             role='student',
             name='Arjun Sharma',
-            department='Computer Science'
+            department='Computer Science',
+            phone='+91-9876543221',
+            address='Student Hostel Block A, Room 101',
+            bio='Third year Computer Science student interested in software development',
+            group_id=1  # Assign to CS-3A group
         )
         db.session.add(demo_student)
         
         for i, name in enumerate(student_names):
+            # Determine group_id based on department
+            if i < 10:  # Computer Science students
+                group_id = 1  # CS-3A
+            elif i < 20:  # Electrical Engineering students
+                group_id = 3  # EE-2A
+            else:  # Mechanical Engineering students
+                group_id = 4  # ME-2A
+                
             student = User(
                 username=f'student_{i+1}',
                 email=f'student{i+1}@institution.com',
                 password_hash=generate_password_hash('student123'),
                 role='student',
                 name=name,
-                department='Computer Science' if i < 10 else 'Electrical Engineering' if i < 20 else 'Mechanical Engineering'
+                department='Computer Science' if i < 10 else 'Electrical Engineering' if i < 20 else 'Mechanical Engineering',
+                phone=f'+91-9876543{221+i+1}',
+                address=f'Student Hostel Block {"A" if i < 10 else "B" if i < 20 else "C"}, Room {101+i+1}',
+                bio=f'Student in {name.split()[1]} department',
+                group_id=group_id
             )
             db.session.add(student)
         

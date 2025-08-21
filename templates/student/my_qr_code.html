@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}My QR Code - Student{% endblock %}
+
+{% block extra_head %}
+<style>
+    .qr-container {
+        max-width: 500px;
+        margin: 0 auto;
+        text-align: center;
+    }
+    .qr-code-display {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin: 20px 0;
+    }
+    .qr-code-image {
+        max-width: 300px;
+        height: auto;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+    }
+    .qr-info {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        text-align: left;
+    }
+    .expiry-timer {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #dc3545;
+    }
+    .refresh-button {
+        margin: 20px 0;
+    }
+    .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .status-active {
+        background-color: #28a745;
+    }
+    .status-expired {
+        background-color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2><i class="fas fa-qrcode"></i> My Attendance QR Code</h2>
+            <p class="text-muted">Show this QR code to your faculty to mark attendance</p>
+        </div>
+    </div>
+
+    <div class="qr-container">
+        <!-- QR Code Display -->
+        <div class="qr-code-display">
+            <h5>Your QR Code</h5>
+            <div id="qr-code-container">
+                <p class="text-muted">Loading QR code...</p>
+            </div>
+            
+            <div class="refresh-button">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> Your QR code is fixed for today and cannot be regenerated
+                </div>
+            </div>
+        </div>
+
+        <!-- QR Code Information -->
+        <div class="qr-info">
+            <h6><i class="fas fa-info-circle"></i> QR Code Information</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Student:</strong> {{ current_user.name }}</p>
+                    <p><strong>Department:</strong> {{ current_user.department }}</p>
+                    <p><strong>Student ID:</strong> {{ current_user.username }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Status:</strong> 
+                        <span class="status-indicator status-active" id="status-indicator"></span>
+                        <span id="status-text">Active</span>
+                    </p>
+                    <p><strong>Generated:</strong> <span id="generated-time">-</span></p>
+                    <p><strong>Expires:</strong> <span id="expires-time">-</span></p>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <p><strong>Time Remaining:</strong> <span class="expiry-timer" id="expiry-timer">-</span></p>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-question-circle"></i> How to Use</h6>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Present this QR code to your faculty during class</li>
+                    <li>Faculty will scan it using their attendance scanner</li>
+                    <li>Your attendance will be automatically marked</li>
+                    <li>QR codes are fixed for the entire day and expire at midnight</li>
+                    <li>Each QR code can only be used once per class session</li>
+                </ol>
+                
+                <div class="alert alert-info mt-3">
+                    <strong>Note:</strong> Your QR code is unique for today and cannot be regenerated. It will automatically refresh tomorrow.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let qrData = null;
+let expiryTimer = null;
+
+function generateNewQR() {
+    // This function is now deprecated since QR codes are fixed per day
+    // QR codes are automatically generated/retrieved on page load
+    showError('QR codes are fixed for today and cannot be regenerated');
+}
+
+function displayQRCode(data) {
+    qrData = data;
+    
+    const container = document.getElementById('qr-code-container');
+    container.innerHTML = `
+        <img src="data:image/png;base64,${data.qr_code}" alt="QR Code" class="qr-code-image">
+        <p class="text-muted mt-2">QR Code Hash: ${data.qr_hash.substring(0, 8)}...</p>
+    `;
+    
+    // Update info
+    document.getElementById('generated-time').textContent = new Date().toLocaleString();
+    document.getElementById('expires-time').textContent = new Date(data.expires_at).toLocaleString();
+    
+    // Update status
+    updateStatus(true);
+}
+
+function startExpiryTimer(expiryTime) {
+    if (expiryTimer) {
+        clearInterval(expiryTimer);
+    }
+    
+    expiryTimer = setInterval(() => {
+        const now = new Date();
+        const expiry = new Date(expiryTime);
+        const timeLeft = expiry - now;
+        
+        if (timeLeft <= 0) {
+            clearInterval(expiryTimer);
+            updateStatus(false);
+            document.getElementById('expiry-timer').textContent = 'Expired';
+            return;
+        }
+        
+        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+        
+        document.getElementById('expiry-timer').textContent = 
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+
+function updateStatus(isActive) {
+    const indicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    
+    if (isActive) {
+        indicator.className = 'status-indicator status-active';
+        statusText.textContent = 'Active';
+    } else {
+        indicator.className = 'status-indicator status-expired';
+        statusText.textContent = 'Expired';
+    }
+}
+
+function showError(message) {
+    const container = document.getElementById('qr-code-container');
+    container.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle"></i> ${message}
+        </div>
+    `;
+}
+
+// Generate/Retrieve QR code when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/generate_qr_code')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayQRCode(data);
+                startExpiryTimer(data.expires_at);
+            } else {
+                showError('Error loading QR code: ' + data.error);
+            }
+        })
+        .catch(error => {
+            showError('Error loading QR code: ' + error);
+        });
+});
+</script>
+{% endblock %}

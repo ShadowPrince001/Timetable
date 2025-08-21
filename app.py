@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import schedule
 import time
 import threading
@@ -11,6 +11,13 @@ import os
 from dotenv import load_dotenv
 from timetable_generator import MultiGroupTimetableGenerator, TimeSlot as GenTimeSlot, Course as GenCourse, Classroom as GenClassroom, StudentGroup as GenStudentGroup, Teacher as GenTeacher
 from collections import defaultdict
+import sqlite3
+import csv
+from io import StringIO, BytesIO
+from werkzeug.utils import secure_filename
+import qrcode
+import base64
+import uuid
 
 load_dotenv()
 
@@ -186,18 +193,30 @@ class StudentGroupCourse(db.Model):
     )
 
 class Attendance(db.Model):
+    """Attendance model for tracking student attendance"""
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    timetable_id = db.Column(db.Integer, db.ForeignKey('timetable.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
-    status = db.Column(db.String(20), nullable=False)  # present, absent, late
-    marked_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    time_slot_id = db.Column(db.Integer, db.ForeignKey('time_slot.id'), nullable=False)
+    status = db.Column(db.String(20), default='present')  # present, absent, late
+    marked_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # faculty who marked
     marked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    qr_code_used = db.Column(db.String(255))  # QR code hash used for attendance
     
     # Relationships
     student = db.relationship('User', foreign_keys=[student_id], backref='attendance_records')
-    timetable = db.relationship('Timetable', backref='attendance_records')
-    marked_by_user = db.relationship('User', foreign_keys=[marked_by], backref='marked_attendance')
+    course = db.relationship('Course', backref='attendance_records')
+    time_slot = db.relationship('TimeSlot', backref='attendance_records')
+    faculty = db.relationship('User', foreign_keys=[marked_by], backref='marked_attendance')
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'course_id', 'date', 'time_slot_id', name='unique_attendance'),
+    )
+    
+    def __repr__(self):
+        return f'<Attendance {self.student.name} - {self.course.name} - {self.date}>'
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -207,6 +226,21 @@ class Notification(db.Model):
     type = db.Column(db.String(20), nullable=False)  # attendance, timetable, general
     read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class QRCode(db.Model):
+    """QR Code model for attendance tracking"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    qr_code_hash = db.Column(db.String(255), unique=True, nullable=False)
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # Relationships
+    user = db.relationship('User', backref='qr_codes')
+    
+    def __repr__(self):
+        return f'<QRCode {self.qr_code_hash[:8]}...>'
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -282,8 +316,9 @@ def admin_dashboard():
         # Get recent attendance data with proper joins
         recent_attendance = db.session.query(Attendance).options(
             db.joinedload(Attendance.student),
-            db.joinedload(Attendance.marked_by_user),
-            db.joinedload(Attendance.timetable).joinedload(Timetable.course)
+            db.joinedload(Attendance.faculty),
+            db.joinedload(Attendance.course),
+            db.joinedload(Attendance.time_slot)
         ).order_by(Attendance.marked_at.desc()).limit(10).all()
         
     except Exception as e:
@@ -361,9 +396,9 @@ def student_dashboard():
     try:
         # Get student's attendance records with proper joins
         attendance_records = db.session.query(Attendance).options(
-            db.joinedload(Attendance.timetable).joinedload(Timetable.course),
-            db.joinedload(Attendance.timetable).joinedload(Timetable.teacher),
-            db.joinedload(Attendance.timetable).joinedload(Timetable.classroom)
+            db.joinedload(Attendance.course),
+            db.joinedload(Attendance.faculty),
+            db.joinedload(Attendance.time_slot)
         ).filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).limit(10).all()
         
         # Get attendance statistics
@@ -1475,9 +1510,10 @@ def admin_manage_group_courses(group_id):
                          current_course_ids=current_course_ids)
 
 # Faculty Routes
-@app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
-@login_required
-def faculty_take_attendance(timetable_id):
+# DISABLED - Use QR attendance scanner instead
+# @app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
+# @login_required
+def faculty_take_attendance_disabled(timetable_id):
     if current_user.role != 'faculty':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
@@ -1622,12 +1658,10 @@ def course_attendance(course_id):
         # Get attendance records for this course through timetables with proper joins
         attendance_records = db.session.query(Attendance).options(
             db.joinedload(Attendance.student),
-            db.joinedload(Attendance.marked_by_user)
-        ).join(
-            Timetable, Attendance.timetable_id == Timetable.id
+            db.joinedload(Attendance.faculty)
         ).filter(
-            Timetable.course_id == course_id,
-            Timetable.teacher_id == current_user.id
+            Attendance.course_id == course_id,
+            Attendance.marked_by == current_user.id
         ).order_by(Attendance.date.desc()).all()
                 
     except Exception as e:
@@ -1647,13 +1681,11 @@ def faculty_all_attendance():
         # Get all attendance records for courses taught by this faculty with proper joins
         attendance_records = db.session.query(Attendance).options(
             db.joinedload(Attendance.student),
-            db.joinedload(Attendance.marked_by_user),
-            db.joinedload(Attendance.timetable).joinedload(Timetable.course),
-            db.joinedload(Attendance.timetable).joinedload(Timetable.classroom)
-        ).join(
-            Timetable, Attendance.timetable_id == Timetable.id
+            db.joinedload(Attendance.faculty),
+            db.joinedload(Attendance.course),
+            db.joinedload(Attendance.time_slot)
         ).filter(
-            Timetable.teacher_id == current_user.id
+            Attendance.marked_by == current_user.id
         ).order_by(Attendance.date.desc()).all()
                     
     except Exception as e:
@@ -1778,7 +1810,7 @@ def student_attendance_history():
     try:
         # Get all attendance records for the student with proper joins
         attendance_records = db.session.query(Attendance).options(
-            db.joinedload(Attendance.timetable).joinedload(Timetable.course),
+            db.joinedload(Attendance.course),
             db.joinedload(Attendance.timetable).joinedload(Timetable.teacher),
             db.joinedload(Attendance.timetable).joinedload(Timetable.classroom)
         ).filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
@@ -1868,7 +1900,7 @@ def student_attendance_alerts():
     try:
         # Get attendance records for the student with proper joins
         attendance_records = db.session.query(Attendance).options(
-            db.joinedload(Attendance.timetable).joinedload(Timetable.course)
+            db.joinedload(Attendance.course)
         ).filter_by(student_id=current_user.id).order_by(Attendance.date.desc()).all()
         
         # Calculate attendance statistics by course
@@ -3548,6 +3580,374 @@ def admin_notifications():
     except Exception as e:
         flash(f'Error loading notifications: {str(e)}', 'error')
         return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/export_database')
+@login_required
+def export_database():
+    """Export database as SQL dump"""
+    if current_user.role != 'admin':
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    try:
+        # Get database file path - cross-platform compatible
+        db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
+        if db_path.startswith('/'):
+            db_path = db_path[1:]
+        # Handle Windows paths
+        if os.name == 'nt':  # Windows
+            db_path = db_path.replace('/', '\\')
+        
+        # Create SQL dump
+        conn = sqlite3.connect(db_path)
+        dump = StringIO()
+        
+        for line in conn.iterdump():
+            dump.write(f'{line}\n')
+        
+        conn.close()
+        
+        # Create response
+        response = app.response_class(
+            response=dump.getvalue(),
+            status=200,
+            mimetype='application/sql'
+        )
+        response.headers['Content-Disposition'] = 'attachment; filename=database_backup.sql'
+        
+        return response
+        
+    except Exception as e:
+        flash(f'Error exporting database: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/import_database', methods=['GET', 'POST'])
+@login_required
+def import_database():
+    """Import database from SQL file"""
+    if current_user.role != 'admin':
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    if request.method == 'POST':
+        if 'database_file' not in request.files:
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        file = request.files['database_file']
+        if file.filename == '':
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        if file and file.filename.endswith('.sql'):
+            try:
+                # Read SQL file
+                sql_content = file.read().decode('utf-8')
+                
+                # Get database file path - cross-platform compatible
+                db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
+                if db_path.startswith('/'):
+                    db_path = db_path[1:]
+                # Handle Windows paths
+                if os.name == 'nt':  # Windows
+                    db_path = db_path.replace('/', '\\')
+                
+                # Execute SQL commands
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                # Split SQL commands and execute
+                sql_commands = sql_content.split(';')
+                for command in sql_commands:
+                    command = command.strip()
+                    if command:
+                        cursor.execute(command)
+                
+                conn.commit()
+                conn.close()
+                
+                flash('Database imported successfully!', 'success')
+                return redirect(url_for('admin_dashboard'))
+                
+            except Exception as e:
+                flash(f'Error importing database: {str(e)}', 'error')
+                return redirect(request.url)
+        else:
+            flash('Invalid file format. Please upload a .sql file', 'error')
+            return redirect(request.url)
+    
+    return render_template('admin/import_database.html')
+
+@app.route('/admin/export_csv/<table_name>')
+@login_required
+def export_csv(table_name):
+    """Export specific table as CSV"""
+    if current_user.role != 'admin':
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    try:
+        # Get table data
+        if table_name == 'users':
+            data = User.query.all()
+            fields = ['id', 'username', 'email', 'role', 'name', 'department', 'phone', 'address', 'qualifications', 'experience', 'bio', 'access_level', 'group_id', 'created_at', 'last_login']
+        elif table_name == 'courses':
+            data = Course.query.all()
+            fields = ['id', 'code', 'name', 'credits', 'department', 'max_students', 'semester', 'description', 'subject_area', 'required_equipment', 'min_capacity', 'periods_per_week']
+        elif table_name == 'timetables':
+            data = Timetable.query.all()
+            fields = ['id', 'course_id', 'classroom_id', 'time_slot_id', 'teacher_id', 'student_group_id', 'semester', 'academic_year']
+        else:
+            flash('Invalid table name', 'error')
+            return redirect(url_for('admin_dashboard'))
+        
+        # Create CSV
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(fields)
+        
+        for item in data:
+            row = []
+            for field in fields:
+                value = getattr(item, field, '')
+                if hasattr(value, 'strftime'):  # Handle datetime objects
+                    value = value.strftime('%Y-%m-%d %H:%M:%S')
+                row.append(str(value) if value is not None else '')
+            writer.writerow(row)
+        
+        # Create response
+        response = app.response_class(
+            response=output.getvalue(),
+            status=200,
+            mimetype='text/csv'
+        )
+        response.headers['Content-Disposition'] = f'attachment; filename={table_name}_export.csv'
+        
+        return response
+        
+    except Exception as e:
+        flash(f'Error exporting {table_name}: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/generate_qr_code')
+@login_required
+def generate_qr_code():
+    """Generate QR code for current user - fixed per day"""
+    try:
+        # Check if user already has an active QR code for today
+        today = date.today()
+        existing_qr = QRCode.query.filter_by(
+            user_id=current_user.id, 
+            is_active=True
+        ).first()
+        
+        if existing_qr:
+            # Check if the existing QR code is for today
+            if existing_qr.generated_at.date() == today:
+                # Return existing QR code for today
+                qr = qrcode.QRCode(version=1, box_size=10, border=5)
+                qr.add_data(existing_qr.qr_code_hash)
+                qr.make(fit=True)
+                
+                img = qr.make_image(fill_color="black", back_color="white")
+                
+                # Convert to base64
+                buffer = BytesIO()
+                img.save(buffer, format='PNG')
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                
+                return jsonify({
+                    'success': True,
+                    'qr_code': img_str,
+                    'qr_hash': existing_qr.qr_code_hash,
+                    'expires_at': existing_qr.expires_at.isoformat(),
+                    'generated_at': existing_qr.generated_at.isoformat(),
+                    'message': 'Using existing QR code for today'
+                })
+        
+        # Generate new QR code for today
+        qr_hash = str(uuid.uuid4())
+        
+        # Set expiration to end of today (23:59:59)
+        expires_at = datetime.combine(today, datetime.max.time().replace(microsecond=0))
+        
+        # Deactivate any existing QR codes
+        if existing_qr:
+            existing_qr.is_active = False
+        
+        new_qr = QRCode(
+            user_id=current_user.id,
+            qr_code_hash=qr_hash,
+            expires_at=expires_at
+        )
+        db.session.add(new_qr)
+        db.session.commit()
+        
+        # Generate QR code image
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_hash)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to base64
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        return jsonify({
+            'success': True,
+            'qr_code': img_str,
+            'qr_hash': qr_hash,
+            'expires_at': expires_at.isoformat(),
+            'generated_at': datetime.utcnow().isoformat(),
+            'message': 'New QR code generated for today'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/scan_qr_code', methods=['POST'])
+@login_required
+def scan_qr_code():
+    """Scan QR code and mark attendance"""
+    if current_user.role != 'faculty':
+        return jsonify({'success': False, 'error': 'Only faculty can mark attendance'})
+    
+    try:
+        data = request.get_json()
+        qr_hash = data.get('qr_hash')
+        course_id = data.get('course_id')
+        time_slot_id = data.get('time_slot_id')
+        
+        if not all([qr_hash, course_id, time_slot_id]):
+            return jsonify({'success': False, 'error': 'Missing required data'})
+        
+        # Verify QR code
+        qr_code = QRCode.query.filter_by(
+            qr_code_hash=qr_hash,
+            is_active=True
+        ).first()
+        
+        if not qr_code:
+            return jsonify({'success': False, 'error': 'Invalid or expired QR code'})
+        
+        if qr_code.expires_at < datetime.utcnow():
+            return jsonify({'success': False, 'error': 'QR code has expired'})
+        
+        # Get student from QR code
+        student = qr_code.user
+        if student.role != 'student':
+            return jsonify({'success': False, 'error': 'QR code is not for a student'})
+        
+        # Get course information for response
+        course = Course.query.get(course_id)
+        if not course:
+            return jsonify({'success': False, 'error': 'Course not found'})
+        
+        # Check if attendance already marked
+        existing_attendance = Attendance.query.filter_by(
+            student_id=student.id,
+            course_id=course_id,
+            date=date.today(),
+            time_slot_id=time_slot_id
+        ).first()
+        
+        if existing_attendance:
+            return jsonify({'success': False, 'error': 'Attendance already marked for this session'})
+        
+        # Mark attendance
+        attendance = Attendance(
+            student_id=student.id,
+            course_id=course_id,
+            date=date.today(),
+            time_slot_id=time_slot_id,
+            marked_by=current_user.id,
+            qr_code_used=qr_hash
+        )
+        
+        db.session.add(attendance)
+        db.session.commit()
+        
+        # Deactivate QR code after use
+        qr_code.is_active = False
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Attendance marked for {student.name}',
+            'student_name': student.name,
+            'course_name': f'{course.code} - {course.name}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/faculty/attendance_scanner')
+@login_required
+def attendance_scanner():
+    """QR code scanner interface for faculty"""
+    if current_user.role != 'faculty':
+        flash('Access denied. Faculty privileges required.', 'error')
+        return redirect(url_for('faculty_dashboard'))
+    
+    # Get current date for display
+    today = date.today().strftime('%A, %B %d, %Y')
+    
+    return render_template('faculty/attendance_scanner.html', today=today)
+
+@app.route('/student/my_qr_code')
+@login_required
+def my_qr_code():
+    """Display student's QR code"""
+    if current_user.role != 'student':
+        flash('Access denied. Student privileges required.', 'error')
+        return redirect(url_for('student_dashboard'))
+    
+    return render_template('student/my_qr_code.html')
+
+# API endpoints for attendance scanner
+@app.route('/api/course/<int:course_id>')
+@login_required
+def api_course(course_id):
+    """Get course information for API"""
+    if current_user.role != 'faculty':
+        return jsonify({'success': False, 'error': 'Access denied'})
+    
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({'success': False, 'error': 'Course not found'})
+    
+    return jsonify({
+        'success': True,
+        'course': {
+            'id': course.id,
+            'code': course.code,
+            'name': course.name,
+            'department': course.department
+        }
+    })
+
+@app.route('/api/timeslot/<int:timeslot_id>')
+@login_required
+def api_timeslot(timeslot_id):
+    """Get time slot information for API"""
+    if current_user.role != 'faculty':
+        return jsonify({'success': False, 'error': 'Access denied'})
+    
+    timeslot = TimeSlot.query.get(timeslot_id)
+    if not timeslot:
+        return jsonify({'success': False, 'error': 'Time slot not found'})
+    
+    return jsonify({
+        'success': True,
+        'timeslot': {
+            'id': timeslot.id,
+            'day': timeslot.day,
+            'start_time': timeslot.start_time,  # Already in HH:MM format
+            'end_time': timeslot.end_time       # Already in HH:MM format
+        }
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)

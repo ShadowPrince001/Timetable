@@ -215,6 +215,11 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('my_qr_code') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-qrcode me-2"></i>My QR Code
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
                         <a href="{{ url_for('student_timetable') }}" class="btn btn-outline-primary w-100">
                             <i class="fas fa-calendar-alt me-2"></i>Full Timetable
                         </a>
@@ -229,6 +234,8 @@
                             <i class="fas fa-user me-2"></i>My Profile
                         </a>
                     </div>
+                </div>
+                <div class="row mt-3">
                     <div class="col-md-3 mb-3">
                         <a href="{{ url_for('student_attendance_alerts') }}" class="btn btn-outline-warning w-100">
                             <i class="fas fa-bell me-2"></i>Alerts

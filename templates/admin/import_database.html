@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Import Database - Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-database"></i> Import Database</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <strong>Warning:</strong> Importing a database will overwrite existing data. Please make sure you have a backup before proceeding.
+                    </div>
+                    
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="database_file">Select SQL File:</label>
+                            <input type="file" class="form-control-file" id="database_file" name="database_file" accept=".sql" required>
+                            <small class="form-text text-muted">Please select a .sql file exported from this system.</small>
+                        </div>
+                        
+                        <div class="form-group mt-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> Import Database
+                            </button>
+                            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Dashboard
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5><i class="fas fa-info-circle"></i> Import Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <ol>
+                        <li>Export your current database first using the export function</li>
+                        <li>Make any necessary modifications to the SQL file</li>
+                        <li>Select the modified SQL file using the file picker above</li>
+                        <li>Click "Import Database" to apply the changes</li>
+                        <li>Wait for the import to complete</li>
+                    </ol>
+                    
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The import process may take several minutes depending on the size of your database.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

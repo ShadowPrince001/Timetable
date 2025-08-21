@@ -196,6 +196,37 @@
                         </a>
                     </div>
                 </div>
+                
+                <!-- Database Management Section -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-database me-2"></i>Database Management
+                        </h6>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_database') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-download me-2"></i>Export Database
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('import_database') }}" class="btn btn-outline-warning w-100">
+                            <i class="fas fa-upload me-2"></i>Import Database
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='users') }}" class="btn btn-outline-info w-100">
+                            <i class="fas fa-file-csv me-2"></i>Export Users CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='courses') }}" class="btn btn-outline-info w-100">
+                            <i class="fas fa-file-csv me-2"></i>Export Courses CSV
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
