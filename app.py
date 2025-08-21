@@ -24,12 +24,23 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
-# Database configuration - supports both SQLite (development) and PostgreSQL (production)
+# Database configuration - PostgreSQL preferred, SQLite fallback for development
 database_url = os.getenv('DATABASE_URL')
-if database_url and database_url.startswith('postgres://'):
-    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+flask_env = os.getenv('FLASK_ENV', 'development')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///timetable_attendance.db'
+if database_url:
+    # PostgreSQL is available (production/render)
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    print(f"✅ Using PostgreSQL database")
+elif flask_env == 'production':
+    # Production but no DATABASE_URL - this shouldn't happen
+    raise ValueError("DATABASE_URL environment variable must be set in production")
+else:
+    # Development - use SQLite
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(app.instance_path, "timetable_attendance.db")}'
+    print(f"✅ Using SQLite database for development")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
