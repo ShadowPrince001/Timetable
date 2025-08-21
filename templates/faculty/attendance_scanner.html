@@ -3,7 +3,58 @@
 {% block title %}Attendance Scanner - Faculty{% endblock %}
 
 {% block extra_head %}
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- Try multiple CDNs to ensure the library loads -->
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- Local fallback -->
+<script src="/static/js/html5-qrcode.min.js"></script>
+<script>
+    // Check if the first CDN loaded successfully
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        console.log('First CDN failed, trying alternative...');
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.onload = function() {
+            console.log('Alternative CDN loaded successfully');
+            // Re-run initialization
+            if (typeof initializeAfterLibraryLoad === 'function') {
+                initializeAfterLibraryLoad();
+            }
+        };
+        script.onerror = function() {
+            console.error('Alternative CDN also failed');
+            // Try a third CDN
+            const script2 = document.createElement('script');
+            script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
+            script2.onload = function() {
+                console.log('Third CDN loaded successfully');
+                if (typeof initializeAfterLibraryLoad === 'function') {
+                    initializeAfterLibraryLoad();
+                }
+            };
+            script2.onerror = function() {
+                console.error('All CDNs failed, trying local version...');
+                // Try local version as last resort
+                const localScript = document.createElement('script');
+                localScript.src = '/static/js/html5-qrcode.min.js';
+                localScript.onload = function() {
+                    console.log('Local version loaded successfully');
+                    if (typeof initializeAfterLibraryLoad === 'function') {
+                        initializeAfterLibraryLoad();
+                    }
+                };
+                localScript.onerror = function() {
+                    console.error('All sources failed including local');
+                    showStatus('Failed to load QR scanner library. Please refresh the page.', 'error');
+                };
+                document.head.appendChild(localScript);
+            };
+            document.head.appendChild(script2);
+        };
+        document.head.appendChild(script);
+    } else {
+        console.log('First CDN loaded successfully');
+    }
+</script>
 <style>
     .scanner-container {
         max-width: 600px;
@@ -55,15 +106,44 @@
     </div>
 
     <div class="scanner-container">
+        <!-- Course and Time Selection -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-cog"></i> Select Course and Time Slot</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="course-select" class="form-label">Course:</label>
+                        <select id="course-select" class="form-select" onchange="updateSessionInfo()">
+                            <option value="">Select a course...</option>
+                            {% for course in courses %}
+                            <option value="{{ course.id }}">{{ course.code }} - {{ course.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="timeslot-select" class="form-label">Time Slot:</label>
+                        <select id="timeslot-select" class="form-select" onchange="updateSessionInfo()">
+                            <option value="">Select a time slot...</option>
+                            {% for slot in time_slots %}
+                            <option value="{{ slot.id }}">{{ slot.day }} {{ slot.start_time }}-{{ slot.end_time }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Course and Time Information Display -->
         <div class="course-info">
             <h5><i class="fas fa-info-circle"></i> Current Session</h5>
             <div class="row">
                 <div class="col-md-6">
-                    <strong>Course:</strong> <span id="course-display">Loading...</span>
+                    <strong>Course:</strong> <span id="course-display">Please select a course</span>
                 </div>
                 <div class="col-md-6">
-                    <strong>Time Slot:</strong> <span id="timeslot-display">Loading...</span>
+                    <strong>Time Slot:</strong> <span id="timeslot-display">Please select a time slot</span>
                 </div>
             </div>
             <div class="row mt-2">
@@ -82,13 +162,13 @@
                 <div id="qr-reader" class="qr-scanner"></div>
                 <div id="qr-reader-results"></div>
                 
-                <!-- Fallback Manual Entry -->
+                <!-- Manual Entry for QR Code Hash (if needed) -->
                 <div id="manual-entry" class="mt-3" style="display: none;">
                     <div class="alert alert-info">
-                        <strong>Scanner not available?</strong> Enter QR code manually:
+                        <strong>Scanner not working?</strong> Enter QR code hash manually:
                     </div>
                     <div class="input-group">
-                        <input type="text" class="form-control" id="manual-qr-input" placeholder="Enter QR code hash">
+                        <input type="text" class="form-control" id="manual-qr-input" placeholder="Enter QR code hash from student's phone">
                         <button class="btn btn-success" onclick="manualMarkAttendance()">
                             <i class="fas fa-check"></i> Mark Attendance
                         </button>
@@ -105,6 +185,27 @@
                     <button class="btn btn-info" onclick="toggleManualEntry()">
                         <i class="fas fa-keyboard"></i> Manual Entry
                     </button>
+                    <button class="btn btn-warning" onclick="testScanner()">
+                        <i class="fas fa-vial"></i> Test Scanner
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="testBasicJS()">
+                        <i class="fas fa-check"></i> Test JS
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="checkLibraryManually()">
+                        <i class="fas fa-sync"></i> Check Library
+                    </button>
+                </div>
+                <div class="text-center mt-2">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i> 
+                        Manual entry is only needed if the scanner doesn't work or you need to enter a QR code hash manually
+                    </small>
+                </div>
+                <div class="text-center mt-2">
+                    <small class="text-info">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        If course/time slot are not auto-filled, please select them manually from the dropdowns above
+                    </small>
                 </div>
             </div>
         </div>
@@ -127,6 +228,8 @@
 </div>
 
 <script>
+console.log('🔍 QR Scanner script starting to load...');
+
 let html5QrcodeScanner = null;
 let recentAttendance = [];
 let currentCourseId = null;
@@ -138,80 +241,137 @@ function getUrlParameter(name) {
     return urlParams.get(name);
 }
 
-// Initialize course and time slot information
-function initializeSessionInfo() {
-    const courseId = getUrlParameter('course');
-    const timeSlotId = getUrlParameter('time_slot');
+// Update session information when course or time slot is selected
+function updateSessionInfo() {
+    const courseSelect = document.getElementById('course-select');
+    const timeSlotSelect = document.getElementById('timeslot-select');
     
-    console.log('URL Parameters - Course ID:', courseId, 'Time Slot ID:', timeSlotId);
+    if (!courseSelect || !timeSlotSelect) {
+        console.error('Dropdown elements not found in updateSessionInfo');
+        return false;
+    }
+    
+    const courseId = courseSelect.value;
+    const timeSlotId = timeSlotSelect.value;
+    
+    console.log('updateSessionInfo called - Course ID:', courseId, 'Time Slot ID:', timeSlotId);
     
     if (!courseId || !timeSlotId) {
-        showStatus('Error: Course and time slot information is missing. Please go back to dashboard and try again.', 'error');
+        currentCourseId = null;
+        currentTimeSlotId = null;
+        document.getElementById('course-display').textContent = 'Please select a course';
+        document.getElementById('timeslot-display').textContent = 'Please select a time slot';
         return false;
     }
     
     currentCourseId = courseId;
     currentTimeSlotId = timeSlotId;
     
-    // Fetch course and time slot details to display
-    fetch(`/api/course/${courseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('course-display').textContent = `${data.course.code} - ${data.course.name}`;
-                console.log('Course data loaded:', data.course);
-            } else {
-                document.getElementById('course-display').textContent = 'Course error: ' + data.error;
-                console.error('Course API error:', data.error);
-            }
-        })
-        .catch(error => {
-            document.getElementById('course-display').textContent = 'Course information unavailable';
-            console.error('Course fetch error:', error);
-        });
+    // Update display with selected values
+    const selectedCourse = courseSelect.options[courseSelect.selectedIndex].text;
+    const selectedTimeSlot = timeSlotSelect.options[timeSlotSelect.selectedIndex].text;
     
-    fetch(`/api/timeslot/${timeSlotId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('timeslot-display').textContent = `${data.timeslot.day} ${data.timeslot.start_time}-${data.timeslot.end_time}`;
-                console.log('Time slot data loaded:', data.timeslot);
-            } else {
-                document.getElementById('timeslot-display').textContent = 'Time slot error: ' + data.error;
-                console.error('Time slot API error:', data.error);
-            }
-        })
-        .catch(error => {
-            document.getElementById('timeslot-display').textContent = 'Time slot information unavailable';
-            console.error('Time slot fetch error:', error);
-        });
+    console.log('Setting display values:', { selectedCourse, selectedTimeSlot });
+    
+    document.getElementById('course-display').textContent = selectedCourse;
+    document.getElementById('timeslot-display').textContent = selectedTimeSlot;
     
     return true;
 }
 
+// Initialize course and time slot information
+function initializeSessionInfo() {
+    // No need to get URL parameters anymore - just initialize the display
+    document.getElementById('course-display').textContent = 'Please select a course';
+    document.getElementById('timeslot-display').textContent = 'Please select a time slot';
+    return true;
+}
+
 function startScanner() {
+    console.log('startScanner called with:', { currentCourseId, currentTimeSlotId });
+    
     if (!currentCourseId || !currentTimeSlotId) {
-        showStatus('Session information not loaded. Please refresh the page.', 'error');
+        showStatus('Please select both course and time slot before starting scanner', 'error');
         return;
     }
     
+    // Check if HTML5 QR code library is loaded
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        console.error('Html5QrcodeScanner is not defined. Library may not be loaded.');
+        showStatus('QR Scanner library not loaded. Please refresh the page.', 'error');
+        return;
+    }
+    
+    console.log('Html5QrcodeScanner is available:', Html5QrcodeScanner);
+    
+    // Check if the scanner container exists
+    const scannerContainer = document.getElementById('qr-reader');
+    if (!scannerContainer) {
+        console.error('Scanner container not found');
+        showStatus('Scanner container not found', 'error');
+        return;
+    }
+    
+    console.log('Scanner container found:', scannerContainer);
+    
     if (html5QrcodeScanner) {
+        console.log('Clearing existing scanner...');
         html5QrcodeScanner.clear();
     }
     
-    html5QrcodeScanner = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        false
-    );
+    // Clear the container first
+    scannerContainer.innerHTML = '';
     
-    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    console.log('Creating new QR scanner...');
+    
+    try {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "qr-reader",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            false
+        );
+        
+        console.log('Scanner created successfully, rendering...');
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        showStatus('Scanner started successfully!', 'success');
+        console.log('Scanner rendered successfully');
+        
+        // Add a visual indicator that scanner is active
+        scannerContainer.style.border = '3px solid #28a745';
+        scannerContainer.style.boxShadow = '0 0 10px rgba(40, 167, 69, 0.5)';
+        
+    } catch (error) {
+        console.error('Error creating scanner:', error);
+        showStatus('Error starting scanner: ' + error.message, 'error');
+        scannerContainer.innerHTML = '<div class="alert alert-danger">Failed to start scanner: ' + error.message + '</div>';
+    }
 }
 
 function stopScanner() {
+    console.log('stopScanner called');
+    
     if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear();
-        html5QrcodeScanner = null;
+        console.log('Stopping existing scanner...');
+        try {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            
+            // Reset visual indicators
+            const scannerContainer = document.getElementById('qr-reader');
+            if (scannerContainer) {
+                scannerContainer.style.border = '2px solid #ddd';
+                scannerContainer.style.boxShadow = 'none';
+                scannerContainer.innerHTML = '<div class="alert alert-info">Scanner stopped. Click "Start Scanner" to begin again.</div>';
+            }
+            
+            showStatus('Scanner stopped successfully', 'success');
+        } catch (error) {
+            console.error('Error stopping scanner:', error);
+            showStatus('Error stopping scanner: ' + error.message, 'error');
+        }
+    } else {
+        console.log('No scanner to stop');
+        showStatus('No scanner is currently running', 'info');
     }
 }
 
@@ -334,16 +494,306 @@ function manualMarkAttendance() {
     document.getElementById('manual-entry').style.display = 'none';
 }
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    if (!initializeSessionInfo()) {
+function testScanner() {
+    console.log('Testing scanner functionality...');
+    
+    if (!currentCourseId || !currentTimeSlotId) {
+        showStatus('Please select both course and time slot before testing', 'error');
         return;
     }
     
-    // Auto-start scanner after a short delay
-    setTimeout(() => {
-        startScanner();
-    }, 1000);
+    // Test if we can create a scanner object
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        showStatus('HTML5 QR Scanner library not loaded', 'error');
+        return;
+    }
+    
+    // Test if we can access the scanner container
+    const scannerContainer = document.getElementById('qr-reader');
+    if (!scannerContainer) {
+        showStatus('Scanner container not found', 'error');
+        return;
+    }
+    
+    // Test camera availability
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                console.log('Camera access granted');
+                showStatus('Camera access granted!', 'success');
+                
+                // Stop the stream
+                stream.getTracks().forEach(track => track.stop());
+                
+                // Test if we can create a scanner instance
+                try {
+                    const testScanner = new Html5QrcodeScanner(
+                        "qr-reader",
+                        { fps: 10, qrbox: { width: 250, height: 250 } },
+                        false
+                    );
+                    
+                    showStatus('Scanner test successful! Library is working.', 'success');
+                    
+                    // Clean up test scanner
+                    testScanner.clear();
+                    
+                    // Show test message in container
+                    scannerContainer.innerHTML = '<div class="alert alert-success">Scanner test successful! Camera access granted. Click "Start Scanner" to begin scanning.</div>';
+                    
+                } catch (error) {
+                    console.error('Scanner test failed:', error);
+                    showStatus('Scanner test failed: ' + error.message, 'error');
+                    scannerContainer.innerHTML = '<div class="alert alert-danger">Scanner test failed: ' + error.message + '</div>';
+                }
+            })
+            .catch(function(err) {
+                console.error('Camera access denied:', err);
+                showStatus('Camera access denied: ' + err.message, 'error');
+                scannerContainer.innerHTML = '<div class="alert alert-warning">Camera access denied. Please allow camera access to use the QR scanner.</div>';
+            });
+    } else {
+        showStatus('Camera not available on this device', 'error');
+        scannerContainer.innerHTML = '<div class="alert alert-danger">Camera not available on this device.</div>';
+    }
+}
+
+function checkScannerStatus() {
+    const status = {
+        libraryLoaded: typeof Html5QrcodeScanner !== 'undefined',
+        scannerActive: html5QrcodeScanner !== null,
+        courseSelected: currentCourseId !== null,
+        timeSlotSelected: currentTimeSlotId !== null,
+        cameraAvailable: navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+    };
+    
+    console.log('Scanner Status:', status);
+    
+    let statusMessage = 'Scanner Status:\n';
+    statusMessage += `Library Loaded: ${status.libraryLoaded ? '✅' : '❌'}\n`;
+    statusMessage += `Scanner Active: ${status.scannerActive ? '✅' : '❌'}\n`;
+    statusMessage += `Course Selected: ${status.courseSelected ? '✅' : '❌'}\n`;
+    statusMessage += `Time Slot Selected: ${status.timeSlotSelected ? '✅' : '❌'}\n`;
+    statusMessage += `Camera Available: ${status.cameraAvailable ? '✅' : '❌'}`;
+    
+    showStatus(statusMessage, 'info');
+    
+    return status;
+}
+
+function testBasicJS() {
+    console.log('Basic JS test function called');
+    alert('Basic JavaScript is working!');
+    
+    // Test DOM manipulation
+    const statusContainer = document.getElementById('status-container');
+    if (statusContainer) {
+        const testDiv = document.createElement('div');
+        testDiv.className = 'status-message status-success';
+        testDiv.textContent = 'Basic JavaScript test passed!';
+        statusContainer.appendChild(testDiv);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            testDiv.remove();
+        }, 3000);
+    }
+    
+    // Test if we can access the scanner container
+    const scannerContainer = document.getElementById('qr-reader');
+    if (scannerContainer) {
+        scannerContainer.innerHTML = '<div class="alert alert-info">Basic JS test passed! Scanner container is accessible.</div>';
+    }
+}
+
+function checkLibraryManually() {
+    console.log('Checking HTML5 QR library manually...');
+    if (typeof Html5QrcodeScanner !== 'undefined') {
+        showStatus('HTML5 QR Scanner library is already loaded!', 'info');
+        
+        // Test if we can create a scanner instance
+        try {
+            const testScanner = new Html5QrcodeScanner(
+                "qr-reader",
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                false
+            );
+            showStatus('Library test successful! Can create scanner instance.', 'success');
+            
+            // Clean up test scanner
+            testScanner.clear();
+            
+        } catch (error) {
+            showStatus('Library loaded but scanner creation failed: ' + error.message, 'error');
+        }
+    } else {
+        showStatus('HTML5 QR Scanner library is NOT loaded. Please refresh the page.', 'error');
+    }
+}
+
+// Function to re-initialize after library loads
+function initializeAfterLibraryLoad() {
+    console.log('Library loaded, re-initializing scanner...');
+    
+    // Update the status
+    if (typeof Html5QrcodeScanner !== 'undefined') {
+        showStatus('HTML5 QR Scanner library loaded successfully!', 'success');
+        
+        // Re-run the DOM ready initialization
+        if (typeof initializeSessionInfo === 'function') {
+            initializeSessionInfo();
+        }
+        
+        // Update the status display
+        const statusButton = document.querySelector('.btn-outline-secondary');
+        if (statusButton) {
+            statusButton.innerHTML = '<i class="fas fa-info-circle"></i> Status (Library Ready)';
+            statusButton.className = 'btn btn-success ms-2';
+        }
+    }
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing attendance scanner...');
+    
+    // Check if HTML5 QR code library is loaded
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        console.error('❌ Html5QrcodeScanner is not defined. Library may not be loaded.');
+        showStatus('QR Scanner library not loaded. Please refresh the page.', 'error');
+        
+        // Wait a bit and check again (in case local fallback is still loading)
+        setTimeout(function() {
+            if (typeof Html5QrcodeScanner !== 'undefined') {
+                console.log('✅ Html5QrcodeScanner is now available after delay');
+                showStatus('QR Scanner library loaded successfully!', 'success');
+            } else {
+                console.error('❌ Html5QrcodeScanner still not available after delay');
+            }
+        }, 2000);
+    } else {
+        console.log('✅ Html5QrcodeScanner is loaded successfully');
+        showStatus('QR Scanner library loaded successfully!', 'success');
+    }
+    
+    if (!initializeSessionInfo()) {
+        console.error('Failed to initialize session info');
+        return;
+    }
+    
+    // Check if we came from a specific class (URL parameters)
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseId = urlParams.get('course');
+    const timeSlotId = urlParams.get('time_slot');
+    
+    console.log('URL Parameters found:', { courseId, timeSlotId });
+    console.log('Full URL:', window.location.href);
+    
+    // Debug dropdown contents
+    const courseSelect = document.getElementById('course-select');
+    const timeSlotSelect = document.getElementById('timeslot-select');
+    
+    if (courseSelect) {
+        console.log('Course dropdown found with options:', courseSelect.options.length);
+        for (let i = 0; i < courseSelect.options.length; i++) {
+            console.log(`Option ${i}:`, courseSelect.options[i].value, courseSelect.options[i].text);
+        }
+    } else {
+        console.error('Course dropdown not found');
+    }
+    
+    if (timeSlotSelect) {
+        console.log('Time slot dropdown found with options:', timeSlotSelect.options.length);
+        for (let i = 0; i < timeSlotSelect.options.length; i++) {
+            console.log(`Option ${i}:`, timeSlotSelect.options[i].value, timeSlotSelect.options[i].text);
+        }
+    } else {
+        console.error('Time slot dropdown not found');
+    }
+    
+    if (courseId && timeSlotId) {
+        console.log('Auto-filling dropdowns with:', { courseId, timeSlotId });
+        
+        if (courseSelect && timeSlotSelect) {
+            // Check if the values exist in the dropdowns
+            const courseExists = Array.from(courseSelect.options).some(opt => opt.value === courseId);
+            const timeSlotExists = Array.from(timeSlotSelect.options).some(opt => opt.value === timeSlotId);
+            
+            console.log('Values exist in dropdowns:', { courseExists, timeSlotExists });
+            
+            if (courseExists && timeSlotExists) {
+                courseSelect.value = courseId;
+                timeSlotSelect.value = timeSlotId;
+                updateSessionInfo();
+                
+                // Auto-start scanner after a short delay
+                setTimeout(() => {
+                    startScanner();
+                }, 1000);
+            } else {
+                console.error('Course or time slot values not found in dropdowns');
+            }
+        } else {
+            console.error('Dropdown elements not found');
+        }
+    } else {
+        console.log('No URL parameters found. Manual selection required.');
+    }
+
+    // Add status check button after the existing buttons
+    const buttonContainer = document.querySelector('.text-center.mt-3');
+    if (buttonContainer) {
+        const statusButton = document.createElement('button');
+        statusButton.className = 'btn btn-outline-secondary ms-2';
+        statusButton.onclick = checkScannerStatus;
+        statusButton.innerHTML = '<i class="fas fa-info-circle"></i> Status';
+        buttonContainer.appendChild(statusButton);
+    }
 });
+
+// Also check on window load as a fallback
+window.addEventListener('load', function() {
+    console.log('🔄 Window loaded, checking HTML5 QR library...');
+    
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        console.error('❌ Html5QrcodeScanner still not defined after window load');
+        
+        // Try to load the library one more time
+        console.log('🔄 Attempting to load library again...');
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.onload = function() {
+            console.log('✅ Library loaded successfully on second attempt');
+            initializeAfterLibraryLoad();
+        };
+        script.onerror = function() {
+            console.error('❌ Second attempt also failed, trying local version...');
+            const localScript = document.createElement('script');
+            localScript.src = '/static/js/html5-qrcode.min.js';
+            localScript.onload = function() {
+                console.log('✅ Local version loaded successfully');
+                initializeAfterLibraryLoad();
+            };
+            localScript.onerror = function() {
+                console.error('❌ Local version also failed');
+                showStatus('Failed to load QR scanner library. Please check your internet connection and refresh the page.', 'error');
+            };
+            document.head.appendChild(localScript);
+        };
+        document.head.appendChild(script);
+    } else {
+        console.log('✅ Html5QrcodeScanner is now available after window load');
+    }
+});
+
+// Add a periodic check for the library
+setInterval(function() {
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        console.log('🔄 Periodic check: Library still not loaded');
+    } else {
+        console.log('✅ Periodic check: Library is now loaded');
+        clearInterval(this);
+    }
+}, 2000);
 </script>
 {% endblock %}

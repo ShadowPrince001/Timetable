@@ -1521,10 +1521,9 @@ def admin_manage_group_courses(group_id):
                          current_course_ids=current_course_ids)
 
 # Faculty Routes
-# DISABLED - Use QR attendance scanner instead
-# @app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
-# @login_required
-def faculty_take_attendance_disabled(timetable_id):
+@app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
+@login_required
+def faculty_take_attendance(timetable_id):
     if current_user.role != 'faculty':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
@@ -1539,19 +1538,20 @@ def faculty_take_attendance_disabled(timetable_id):
         
         # Get students enrolled in this course through student groups
         students = db.session.query(User).join(
-            StudentGroupCourse, User.department == StudentGroupCourse.student_group_id  # This is simplified
+            StudentGroupCourse, User.group_id == StudentGroupCourse.student_group_id
         ).filter(
             StudentGroupCourse.course_id == timetable.course_id,
             User.role == 'student'
         ).all()
         
-        # For now, get all students - we'll improve this later
-        students = User.query.filter_by(role='student').limit(20).all()
+        # If no students found through groups, get all students (fallback)
+        if not students:
+            students = User.query.filter_by(role='student').limit(20).all()
         
         # Get today's attendance records for this class
         today = datetime.now().date()
         attendance_records = {record.student_id: record for record in 
-                             Attendance.query.filter_by(timetable_id=timetable_id, date=today).all()}
+                             Attendance.query.filter_by(course_id=timetable.course_id, time_slot_id=timetable.time_slot_id, date=today).all()}
         
         return render_template('faculty/take_attendance.html', 
                              timetable=timetable, 
@@ -1598,7 +1598,8 @@ def save_attendance():
                 # Check if attendance already exists
                 existing = Attendance.query.filter_by(
                     student_id=student_id,
-                    timetable_id=timetable_id,
+                    course_id=timetable.course_id,
+                    time_slot_id=timetable.time_slot_id,
                     date=date
                 ).first()
                 
@@ -1609,7 +1610,8 @@ def save_attendance():
                 else:
                     new_attendance = Attendance(
                         student_id=student_id,
-                        timetable_id=timetable_id,
+                        course_id=timetable.course_id,
+                        time_slot_id=timetable.time_slot_id,
                         date=date,
                         status=status,
                         marked_by=current_user.id
@@ -3030,89 +3032,33 @@ def admin_generate_timetables():
 @app.route('/faculty/timetable')
 @login_required
 def faculty_timetable():
-    """Show compiled timetable for faculty member across all groups"""
+    """Display faculty's timetable with attendance options"""
     if current_user.role != 'faculty':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
     try:
-        
-        # Get all timetables for this faculty member with proper joins
-        faculty_timetables = db.session.query(Timetable).options(
-            db.joinedload(Timetable.time_slot),
+        # Get faculty's timetables with proper joins
+        timetables = db.session.query(Timetable).options(
             db.joinedload(Timetable.course),
             db.joinedload(Timetable.classroom),
-            db.joinedload(Timetable.student_group)
-        ).filter_by(teacher_id=current_user.id).all()
+            db.joinedload(Timetable.time_slot)
+        ).filter_by(teacher_id=current_user.id).order_by(Timetable.time_slot_id).all()
         
-        # Get all time slots to show breaks
-        all_time_slots = TimeSlot.query.filter(
-            TimeSlot.day.in_(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
-        ).order_by(TimeSlot.day, TimeSlot.start_time).all()
-        
-        # Group by day and time for better display
-        timetable_by_day = {}
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-        
-        # Initialize all days with empty lists and add time slot information
+        # Group timetables by day
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        timetables_by_day = {}
         for day in days:
-            timetable_by_day[day] = []
-            # Add time slot information for breaks
-            for time_slot in all_time_slots:
-                if time_slot.day == day:
-                    timetable_by_day[day].append({
-                        'start_time': time_slot.start_time,
-                        'end_time': time_slot.end_time,
-                        'break_type': time_slot.break_type,
-                        'is_time_slot': True
-                    })
+            timetables_by_day[day] = []
         
-        # Add timetable entries
-        for entry in faculty_timetables:
-            time_slot = entry.time_slot
-            if not time_slot or time_slot.day not in days:
-                continue
-                
-            day = time_slot.day
-            
-            # Get additional information
-            course = entry.course
-            classroom = entry.classroom
-            student_group = entry.student_group
-            
-            # Find and update the existing time slot entry
-            for slot in timetable_by_day[day]:
-                if (slot['start_time'] == time_slot.start_time and 
-                    slot['end_time'] == time_slot.end_time):
-                    # Update with class information
-                    slot.update({
-                        'id': entry.id,
-                        'course_code': course.code if course else 'Unknown',
-                        'course_name': course.name if course else 'Unknown',
-                        'classroom': classroom.room_number if classroom else 'Unknown',
-                        'building': classroom.building if classroom else 'Unknown',
-                        'student_group': student_group.name if student_group else 'Unknown',
-                        'semester': entry.semester,
-                        'academic_year': entry.academic_year,
-                        'is_time_slot': False  # Now it's a class
-                    })
-                    break
-        
-        # Sort each day by start time
-        for day in timetable_by_day:
-            timetable_by_day[day].sort(key=lambda x: x['start_time'])
-        
-        # Get unique time slots for calendar view
-        time_slots = []
-        for time_slot in all_time_slots:
-            time_range = f"{time_slot.start_time}-{time_slot.end_time}"
-            if time_range not in time_slots:
-                time_slots.append(time_range)
+        for timetable in timetables:
+            day = timetable.time_slot.day
+            if day in timetables_by_day:
+                timetables_by_day[day].append(timetable)
         
         return render_template('faculty/timetable.html', 
-                             timetable_by_day=timetable_by_day,
-                             time_slots=time_slots,
-                             faculty_name=current_user.name)
+                             timetables_by_day=timetables_by_day,
+                             days=days)
                              
     except Exception as e:
         flash(f'Error loading timetable: {str(e)}', 'error')
@@ -3905,7 +3851,26 @@ def attendance_scanner():
     # Get current date for display
     today = date.today().strftime('%A, %B %d, %Y')
     
-    return render_template('faculty/attendance_scanner.html', today=today)
+    # Get faculty's courses for selection
+    course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
+    course_ids = [assignment.course_id for assignment in course_assignments]
+    courses = Course.query.filter(Course.id.in_(course_ids)).all() if course_ids else []
+    
+    # If no courses assigned, show all courses as fallback
+    if not courses:
+        courses = Course.query.all()
+    
+    # Get time slots
+    time_slots = TimeSlot.query.all()
+    
+    print(f"Debug: Faculty {current_user.id} has {len(course_assignments)} course assignments")
+    print(f"Debug: Found {len(courses)} courses for dropdown")
+    print(f"Debug: Found {len(time_slots)} time slots for dropdown")
+    
+    return render_template('faculty/attendance_scanner.html', 
+                         today=today, 
+                         courses=courses, 
+                         time_slots=time_slots)
 
 @app.route('/student/my_qr_code')
 @login_required

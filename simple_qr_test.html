@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple QR Library Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>HTML5 QR Code Library Test</h1>
+    
+    <div id="status"></div>
+    
+    <button onclick="testLibrary()">Test Library</button>
+    <button onclick="loadLibrary()">Load Library</button>
+    
+    <script>
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        function testLibrary() {
+            if (typeof Html5QrcodeScanner !== 'undefined') {
+                updateStatus('✅ Html5QrcodeScanner is loaded and available!', 'success');
+                console.log('Library details:', Html5QrcodeScanner);
+            } else {
+                updateStatus('❌ Html5QrcodeScanner is NOT loaded', 'error');
+            }
+        }
+        
+        function loadLibrary() {
+            updateStatus('🔄 Attempting to load library...', 'info');
+            
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+            
+            script.onload = function() {
+                updateStatus('✅ Library loaded successfully!', 'success');
+                testLibrary();
+            };
+            
+            script.onerror = function() {
+                updateStatus('❌ Failed to load library from CDN', 'error');
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Test on page load
+        window.onload = function() {
+            updateStatus('Page loaded. Click "Test Library" to check if library is available.', 'info');
+            testLibrary();
+        };
+    </script>
+</body>
+</html>

@@ -7,178 +7,74 @@
     <div class="col-12">
         <h1 class="h3 mb-0">
             <i class="fas fa-calendar-alt text-primary me-2"></i>
-            My Teaching Schedule
+            My Timetable
         </h1>
-        <p class="text-muted">Complete timetable showing all your classes across all student groups</p>
+        <p class="text-muted">View your class schedule and take attendance</p>
     </div>
 </div>
 
-<!-- View Toggle Buttons -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="btn-group" role="group">
-            <button type="button" class="btn btn-outline-primary active" onclick="showView('calendar')">
-                <i class="fas fa-calendar-alt me-2"></i>Calendar View
-            </button>
-            <button type="button" class="btn btn-outline-primary" onclick="showView('list')">
-                <i class="fas fa-list me-2"></i>List View
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Timetable Overview Card -->
-<div class="row mb-4">
+<div class="row">
     <div class="col-12">
         <div class="card shadow">
             <div class="card-header py-3">
                 <h6 class="m-0 font-weight-bold text-primary">
-                    <i class="fas fa-user-tie me-2"></i>{{ faculty_name }}'s Teaching Schedule
+                    <i class="fas fa-calendar me-2"></i>Weekly Schedule
                 </h6>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="text-center">
-                            <i class="fas fa-calendar fa-3x text-primary mb-2"></i>
-                            <h5 class="text-primary">{{ timetable_by_day|length }}</h5>
-                            <p class="text-muted">Teaching Days</p>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="text-center">
-                            <i class="fas fa-clock fa-3x text-success mb-2"></i>
-                            <h5 class="text-success">
-                                {% set total_classes = 0 %}
-                                {% for day, classes in timetable_by_day.items() %}
-                                    {% set total_classes = total_classes + classes|length %}
-                                {% endfor %}
-                                {{ total_classes }}
-                            </h5>
-                            <p class="text-muted">Total Classes</p>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="text-center">
-                            <i class="fas fa-users fa-3x text-info mb-2"></i>
-                            <h5 class="text-info">
-                                {% set unique_groups = [] %}
-                                {% for day, classes in timetable_by_day.items() %}
-                                    {% for class in classes %}
-                                        {% if class.student_group not in unique_groups %}
-                                            {% set _ = unique_groups.append(class.student_group) %}
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endfor %}
-                                {{ unique_groups|length }}
-                            </h5>
-                            <p class="text-muted">Student Groups</p>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="text-center">
-                            <i class="fas fa-building fa-3x text-warning mb-2"></i>
-                            <h5 class="text-warning">
-                                {% set unique_rooms = [] %}
-                                {% for day, classes in timetable_by_day.items() %}
-                                    {% for class in classes %}
-                                        {% if class.classroom not in unique_rooms %}
-                                            {% set _ = unique_rooms.append(class.classroom) %}
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endfor %}
-                                {{ unique_rooms|length }}
-                            </h5>
-                            <p class="text-muted">Classrooms Used</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Calendar View -->
-<div id="calendarView">
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-calendar-grid me-2"></i>Weekly Schedule Grid
-                    </h6>
-                </div>
-                <div class="card-body">
+                {% if timetables_by_day %}
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover">
                             <thead class="table-dark">
                                 <tr>
                                     <th style="width: 120px;">Time</th>
-                                    {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
+                                    {% for day in days %}
                                         <th class="text-center">{{ day }}</th>
                                     {% endfor %}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for time_slot in time_slots %}
+                                {% set time_slots = [] %}
+                                {% for day in days %}
+                                    {% for timetable in timetables_by_day[day] %}
+                                        {% set time_range = timetable.time_slot.start_time|string + '-' + timetable.time_slot.end_time|string %}
+                                        {% if time_range not in time_slots %}
+                                            {% set _ = time_slots.append(time_range) %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                                
+                                {% for time_range in time_slots|sort %}
                                     <tr>
-                                        <td class="text-center fw-bold bg-light">
-                                            <small>{{ time_slot }}</small>
+                                        <td class="text-center font-weight-bold bg-light">
+                                            {{ time_range }}
                                         </td>
-                                        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
-                                            <td class="text-center" style="height: 80px; vertical-align: middle;">
+                                        {% for day in days %}
+                                            <td class="text-center">
                                                 {% set class_found = false %}
-                                                {% set break_type = 'none' %}
-                                                
-                                                <!-- Check for classes first -->
-                                                {% if day in timetable_by_day %}
-                                                    {% for slot in timetable_by_day[day] %}
-                                                        {% if slot.start_time + '-' + slot.end_time == time_slot %}
-                                                            {% if not slot.is_time_slot %}
-                                                                <!-- This is a class -->
-                                                                {% set class_found = true %}
-                                                                <div class="class-card p-2 bg-primary text-white rounded">
-                                                                    <div class="fw-bold small">{{ slot.course_code }}</div>
-                                                                    <div class="small">{{ slot.course_name[:20] }}{% if slot.course_name|length > 20 %}...{% endif %}</div>
-                                                                    <div class="small">{{ slot.student_group }}</div>
-                                                                    <div class="small">{{ slot.classroom }}</div>
-                                                                    <button class="btn btn-sm btn-light mt-1" 
-                                                                            onclick="showClassDetails('{{ slot.course_code }}', '{{ slot.student_group }}', '{{ slot.classroom }}', '{{ slot.building }}', '{{ slot.start_time }}', '{{ slot.end_time }}')">
-                                                                        <i class="fas fa-info-circle"></i>
-                                                                    </button>
-                                                                </div>
-                                                            {% else %}
-                                                                <!-- This is a time slot - check if it's a break -->
-                                                                {% if slot.break_type and slot.break_type != 'none' %}
-                                                                    {% set break_type = slot.break_type %}
-                                                                {% endif %}
-                                                            {% endif %}
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                {% endif %}
-                                                
-                                                <!-- Only show breaks if no class is scheduled -->
-                                                {% if not class_found %}
-                                                    {% if break_type != 'none' %}
-                                                        <div class="text-muted small">
-                                                            {% if break_type == 'tea_break' %}
-                                                                <i class="fas fa-coffee text-warning"></i><br>
-                                                                <small class="text-warning">Tea Break</small>
-                                                            {% elif break_type == 'lunch' %}
-                                                                <i class="fas fa-utensils text-success"></i><br>
-                                                                <small class="text-success">Lunch</small>
-                                                            {% elif break_type == 'prayer' %}
-                                                                <i class="fas fa-pray text-info"></i><br>
-                                                                <small class="text-info">Prayer</small>
-                                                            {% elif break_type == 'assembly' %}
-                                                                <i class="fas fa-users text-primary"></i><br>
-                                                                <small class="text-primary">Assembly</small>
-                                                            {% else %}
-                                                                <i class="fas fa-coffee"></i><br>
-                                                                <small>{{ break_type|title }}</small>
-                                                            {% endif %}
+                                                {% for timetable in timetables_by_day[day] %}
+                                                    {% set current_time_range = timetable.time_slot.start_time|string + '-' + timetable.time_slot.end_time|string %}
+                                                    {% if current_time_range == time_range %}
+                                                        {% set class_found = true %}
+                                                        <div class="class-slot p-2 border rounded">
+                                                            <div class="fw-bold text-primary">{{ timetable.course.code }}</div>
+                                                            <div class="small">{{ timetable.course.name }}</div>
+                                                            <div class="small text-muted">{{ timetable.classroom.room_number }}</div>
+                                                                                                                         <div class="mt-2">
+                                                                 <a href="{{ url_for('attendance_scanner') }}?course={{ timetable.course.id }}&time_slot={{ timetable.time_slot.id }}" 
+                                                                    class="btn btn-success btn-sm">
+                                                                     <i class="fas fa-qrcode me-1"></i>QR Scanner
+                                                                 </a>
+                                                                 <a href="{{ url_for('faculty_take_attendance', timetable_id=timetable.id) }}" 
+                                                                    class="btn btn-primary btn-sm">
+                                                                     <i class="fas fa-clipboard-check me-1"></i>Manual
+                                                                 </a>
+                                                             </div>
                                                         </div>
                                                     {% endif %}
+                                                {% endfor %}
+                                                {% if not class_found %}
+                                                    <span class="text-muted">-</span>
                                                 {% endif %}
                                             </td>
                                         {% endfor %}
@@ -187,212 +83,50 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No classes scheduled</h5>
+                        <p class="text-muted">You don't have any classes in your timetable yet.</p>
+                        <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                        </a>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- List View (Hidden by default) -->
-<div id="listView" style="display: none;">
-    {% if timetable_by_day %}
-        {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
-            {% if day in timetable_by_day and timetable_by_day[day] %}
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card shadow">
-                            <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                                <h6 class="m-0 font-weight-bold text-primary">
-                                    <i class="fas fa-calendar-day me-2"></i>{{ day }}
-                                </h6>
-                                <span class="badge bg-primary">{{ timetable_by_day[day]|length }} classes</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-bordered table-hover">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Time</th>
-                                                <th>Course</th>
-                                                <th>Student Group</th>
-                                                <th>Classroom</th>
-                                                <th>Building</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                                                        <tbody>
-                                    {% for slot in timetable_by_day[day] %}
-                                        <tr>
-                                            <td>
-                                                <strong>{{ slot.start_time }} - {{ slot.end_time }}</strong>
-                                            </td>
-                                            {% if not slot.is_time_slot %}
-                                                <!-- This is a class -->
-                                                <td>
-                                                    <div>
-                                                        <strong>{{ slot.course_code }}</strong><br>
-                                                        <small class="text-muted">{{ slot.course_name }}</small>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-info">{{ slot.student_group }}</span>
-                                                </td>
-                                                <td>
-                                                    <i class="fas fa-door-open me-1"></i>{{ slot.classroom }}
-                                                </td>
-                                                <td>
-                                                    <i class="fas fa-building me-1"></i>{{ slot.building }}
-                                                </td>
-                                                <td>
-                                                    <button class="btn btn-sm btn-outline-primary" 
-                                                            onclick="showClassDetails('{{ slot.course_code }}', '{{ slot.student_group }}', '{{ slot.classroom }}', '{{ slot.building }}', '{{ slot.start_time }}', '{{ slot.end_time }}')">
-                                                        <i class="fas fa-info-circle"></i> Details
-                                                    </button>
-                                                </td>
-                                            {% else %}
-                                                <!-- This is a break time -->
-                                                <td colspan="5">
-                                                    {% if slot.break_type and slot.break_type != 'none' %}
-                                                        <div class="text-center">
-                                                            {% if slot.break_type == 'tea_break' %}
-                                                                <i class="fas fa-coffee text-warning me-2"></i>
-                                                                <span class="text-warning fw-bold">Tea Break</span>
-                                                            {% elif slot.break_type == 'lunch' %}
-                                                                <i class="fas fa-utensils text-success me-2"></i>
-                                                                <span class="text-success fw-bold">Lunch Break</span>
-                                                            {% elif slot.break_type == 'prayer' %}
-                                                                <i class="fas fa-pray text-info me-2"></i>
-                                                                <span class="text-info fw-bold">Prayer Time</span>
-                                                            {% elif slot.break_type == 'assembly' %}
-                                                                <i class="fas fa-users text-primary me-2"></i>
-                                                                <span class="text-primary fw-bold">Assembly</span>
-                                                            {% else %}
-                                                                <i class="fas fa-coffee me-2"></i>
-                                                                <span class="fw-bold">{{ slot.break_type|title }}</span>
-                                                            {% endif %}
-                                                        </div>
-                                                    {% else %}
-                                                        <div class="text-center text-muted">
-                                                            <i class="fas fa-minus me-2"></i>
-                                                            <span>Free Time</span>
-                                                        </div>
-                                                    {% endif %}
-                                                </td>
-                                            {% endif %}
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
+<!-- Quick Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-bolt me-2"></i>Quick Actions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <a href="{{ url_for('attendance_scanner') }}" class="btn btn-success w-100">
+                            <i class="fas fa-qrcode me-2"></i>QR Code Scanner
+                        </a>
                     </div>
-                </div>
-            {% endif %}
-        {% endfor %}
-    {% else %}
-        <div class="row">
-            <div class="col-12">
-                <div class="card shadow">
-                    <div class="card-body text-center py-5">
-                        <i class="fas fa-calendar-times fa-4x text-muted mb-3"></i>
-                        <h4 class="text-muted">No Classes Scheduled</h4>
-                        <p class="text-muted">You don't have any classes scheduled yet.</p>
-                        <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary">
-                            <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                    <div class="col-md-4">
+                        <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-primary w-100">
+                            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="{{ url_for('faculty_all_attendance') }}" class="btn btn-info w-100">
+                            <i class="fas fa-chart-bar me-2"></i>Attendance Reports
                         </a>
                     </div>
                 </div>
             </div>
         </div>
-    {% endif %}
-</div>
-
-<!-- Class Details Modal -->
-<div class="modal fade" id="classDetailsModal" tabindex="-1" aria-labelledby="classDetailsModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="classDetailsModalLabel">Class Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-6">
-                        <strong>Course:</strong><br>
-                        <span id="modalCourse"></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Student Group:</strong><br>
-                        <span id="modalGroup"></span>
-                    </div>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-6">
-                        <strong>Classroom:</strong><br>
-                        <span id="modalClassroom"></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Building:</strong><br>
-                        <span id="modalBuilding"></span>
-                    </div>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-6">
-                        <strong>Time:</strong><br>
-                        <span id="modalTime"></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Day:</strong><br>
-                        <span id="modalDay"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-function showView(viewType) {
-    // Hide all views
-    document.getElementById('calendarView').style.display = 'none';
-    document.getElementById('listView').style.display = 'none';
-    
-    // Show selected view
-    if (viewType === 'calendar') {
-        document.getElementById('calendarView').style.display = 'block';
-    } else if (viewType === 'list') {
-        document.getElementById('listView').style.display = 'block';
-    }
-    
-    // Update button states
-    document.querySelectorAll('.btn-group .btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-}
-
-function showClassDetails(courseCode, studentGroup, classroom, building, startTime, endTime) {
-    document.getElementById('modalCourse').textContent = courseCode;
-    document.getElementById('modalGroup').textContent = studentGroup;
-    document.getElementById('modalClassroom').textContent = classroom;
-    document.getElementById('modalBuilding').textContent = building;
-    document.getElementById('modalTime').textContent = startTime + ' - ' + endTime;
-    
-    // Get current day from the context
-    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    document.getElementById('modalDay').textContent = currentDay;
-    
-    // Show the modal
-    const modal = new bootstrap.Modal(document.getElementById('classDetailsModal'));
-    modal.show();
-}
-</script>
 {% endblock %}

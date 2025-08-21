@@ -43,9 +43,12 @@
                                 <td>{{ class.classroom.room_number }}</td>
                                 <td>{{ class.course.max_students }}</td>
                                 <td>
-                                    <a href="{{ url_for('attendance_scanner') }}?course={{ class.course.id }}&time_slot={{ class.time_slot.id }}" class="btn btn-primary btn-sm">
-                                        <i class="fas fa-clipboard-check me-1"></i>Take Attendance
-                                    </a>
+                                                                         <a href="{{ url_for('attendance_scanner') }}?course={{ class.course.id }}&time_slot={{ class.time_slot.id }}" class="btn btn-success btn-sm">
+                                         <i class="fas fa-qrcode me-1"></i>QR Scanner
+                                     </a>
+                                     <a href="{{ url_for('faculty_take_attendance', timetable_id=class.id) }}" class="btn btn-primary btn-sm">
+                                         <i class="fas fa-clipboard-check me-1"></i>Manual
+                                     </a>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -144,7 +147,7 @@
                         </a>
                     </div>
                     <div class="col-md-3 mb-3">
-                        <a href="{{ url_for('attendance_scanner') }}" class="btn btn-primary w-100">
+                        <a href="{{ url_for('faculty_timetable') }}" class="btn btn-primary w-100">
                             <i class="fas fa-clipboard-check me-2"></i>Manual Attendance
                         </a>
                     </div>
