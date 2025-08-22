@@ -177,6 +177,17 @@
         animation: pulse 1.5s infinite;
     }
     
+    .scanner-status.cooldown {
+        background: #fff3cd;
+        border-color: #ffeaa7;
+        color: #856404;
+    }
+    
+    .scanner-status.cooldown i {
+        color: #ffc107;
+        animation: pulse 1s infinite;
+    }
+    
     @keyframes pulse {
         0% { opacity: 1; }
         50% { opacity: 0.5; }
@@ -268,6 +279,73 @@
             </div>
         </div>
 
+        <!-- Status Messages -->
+        <div id="status-container"></div>
+
+        <!-- Scanner Status and Controls -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-cog"></i> Scanner Status & Settings</h5>
+            </div>
+            <div class="card-body">
+                <!-- Scanner Status Indicator -->
+                <div class="text-center mb-3">
+                    <div id="scanner-status" class="scanner-status">
+                        <i class="fas fa-stop-circle text-muted"></i>
+                        <span class="text-muted">Scanner: Stopped</span>
+                    </div>
+                </div>
+                
+                <!-- Scan Cooldown Controls -->
+                <div class="text-center">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center justify-content-center gap-3">
+                                <small class="text-muted">
+                                    <i class="fas fa-clock"></i> Scan Cooldown: <span id="cooldown-display" class="cooldown-display">2</span>s
+                                </small>
+                                <div class="cooldown-controls">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="decreaseScanCooldown()" title="Decrease cooldown">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="increaseScanCooldown()" title="Increase cooldown">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="resetScanCooldown()" title="Reset to default">
+                                        <i class="fas fa-undo"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scanner Info -->
+                <div class="text-center mt-3">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <small class="text-success">
+                                <i class="fas fa-sync"></i> 
+                                <strong>Continuous Scanning</strong>
+                            </small>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-info">
+                                <i class="fas fa-clock"></i> 
+                                <strong>Cooldown Protection</strong>
+                            </small>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-warning">
+                                <i class="fas fa-exclamation-triangle"></i> 
+                                <strong>Select Course & Time</strong>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- QR Scanner -->
         <div class="card">
             <div class="card-header">
@@ -340,57 +418,8 @@
                         Manual entry is only needed if the scanner doesn't work or you need to enter a QR code hash manually
                     </small>
                 </div>
-                
-                <div class="text-center mt-2">
-                    <small class="text-success">
-                        <i class="fas fa-sync"></i> 
-                        <strong>Continuous Scanning:</strong> Scanner will keep running after each scan until you press Stop
-                    </small>
-                </div>
-                
-                <div class="text-center mt-2">
-                    <small class="text-info">
-                        <i class="fas fa-clock"></i> 
-                        <strong>Scan Cooldown:</strong> Prevents multiple scans of the same QR code within the set time period
-                    </small>
-                </div>
-                <div class="text-center mt-2">
-                    <small class="text-info">
-                        <i class="fas fa-exclamation-triangle"></i> 
-                        If course/time slot are not auto-filled, please select them manually from the dropdowns above
-                    </small>
-                </div>
-                
-                <!-- Scanner Status Indicator -->
-                <div class="text-center mt-3">
-                    <div id="scanner-status" class="scanner-status">
-                        <i class="fas fa-stop-circle text-muted"></i>
-                        <span class="text-muted">Scanner: Stopped</span>
-                    </div>
-                    
-                    <!-- Scan Cooldown Controls -->
-                    <div class="mt-2">
-                        <small class="text-muted me-3">
-                            <i class="fas fa-clock"></i> Scan Cooldown: <span id="cooldown-display" class="cooldown-display">2</span>s
-                        </small>
-                        <div class="cooldown-controls">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="decreaseScanCooldown()" title="Decrease cooldown">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="increaseScanCooldown()" title="Increase cooldown">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-warning" onclick="resetScanCooldown()" title="Reset to default">
-                                <i class="fas fa-undo"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
-
-        <!-- Status Messages -->
-        <div id="status-container"></div>
 
         <!-- Recent Attendance -->
         <div class="card mt-4">
@@ -697,31 +726,38 @@ function onScanSuccess(decodedText, decodedResult) {
         return;
     }
     
-    // Check if this QR code was already scanned in this session
-    if (scannedQRCodes.has(decodedText)) {
-        console.log('QR code already scanned in this session:', decodedText);
-        playSound('duplicate');
-        showScanFeedback('duplicate', decodedText);
-        showStatus('QR code already scanned in this session', 'warning');
-        return;
-    }
-    
-    // Check if enough time has passed since last scan (cooldown)
+    // Check if enough time has passed since last scan (cooldown) - APPLY TO ALL SCANS
     if (currentTime - lastScanTime < scanCooldown) {
         console.log('Scan cooldown active, ignoring scan. Time since last scan:', currentTime - lastScanTime, 'ms');
         showStatus(`Scan cooldown active. Please wait ${((scanCooldown - (currentTime - lastScanTime)) / 1000).toFixed(1)} seconds.`, 'warning');
         return;
     }
     
-    // Set processing flag and update last scan time
+    // Set processing flag and update last scan time for ALL scans
     isProcessingScan = true;
     lastScanTime = currentTime;
     
+    // Show cooldown status for ALL scans
+    showCooldownStatus();
+    
+    // Check if this QR code was already scanned in this session
+    if (scannedQRCodes.has(decodedText)) {
+        console.log('QR code already scanned in this session:', decodedText);
+        playSound('duplicate');
+        showScanFeedback('duplicate', decodedText);
+        showStatus('QR code already scanned in this session', 'warning');
+        
+        // Reset processing flag after cooldown for duplicate scans
+        setTimeout(() => {
+            isProcessingScan = false;
+            console.log('Duplicate scan processing completed, ready for next scan');
+        }, scanCooldown);
+        
+        return;
+    }
+    
     // Add QR code to scanned set immediately to prevent duplicates
     scannedQRCodes.add(decodedText);
-    
-    // Show cooldown status
-    showCooldownStatus();
     
     // Play success sound
     playSound('success');
@@ -839,6 +875,8 @@ function showCooldownStatus() {
                 if (cooldownDisplay) {
                     cooldownDisplay.textContent = (remainingCooldown / 1000).toFixed(1);
                 }
+                // Update scanner status to show cooldown
+                updateScannerStatus();
             } else {
                 // Cooldown finished
                 clearInterval(countdownInterval);
@@ -847,6 +885,8 @@ function showCooldownStatus() {
                     cooldownDisplay.style.color = '#007bff'; // Blue when ready
                     cooldownDisplay.textContent = (scanCooldown / 1000);
                 }
+                // Update scanner status to show ready
+                updateScannerStatus();
             }
         }, 100); // Update every 100ms for smooth countdown
     }
@@ -894,9 +934,19 @@ function updateScannerStatus() {
     const statusElement = document.getElementById('scanner-status');
     if (!statusElement) return;
     
+    const currentTime = Date.now();
+    const timeSinceLastScan = currentTime - lastScanTime;
+    const isInCooldown = timeSinceLastScan < scanCooldown && lastScanTime > 0;
+    
     if (isScanning) {
-        statusElement.className = 'scanner-status scanning';
-        statusElement.innerHTML = '<i class="fas fa-play-circle"></i><span>Scanner: Active - Keep Scanning</span>';
+        if (isInCooldown) {
+            const remainingCooldown = Math.max(0, scanCooldown - timeSinceLastScan);
+            statusElement.className = 'scanner-status cooldown';
+            statusElement.innerHTML = `<i class="fas fa-clock"></i><span>Scanner: Cooldown (${(remainingCooldown / 1000).toFixed(1)}s)</span>`;
+        } else {
+            statusElement.className = 'scanner-status scanning';
+            statusElement.innerHTML = '<i class="fas fa-play-circle"></i><span>Scanner: Active - Keep Scanning</span>';
+        }
     } else {
         statusElement.className = 'scanner-status';
         statusElement.innerHTML = '<i class="fas fa-stop-circle"></i><span>Scanner: Stopped</span>';
@@ -1638,5 +1688,12 @@ setInterval(function() {
         clearInterval(this);
     }
 }, 2000);
+
+// Add periodic update for scanner status
+setInterval(function() {
+    if (isScanning) {
+        updateScannerStatus();
+    }
+}, 500); // Update every 500ms when scanning
 </script>
 {% endblock %}
