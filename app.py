@@ -22,7 +22,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import QueuePool
 
-load_dotenv()
+# Load environment variables if .env file exists
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
+    # Set default environment variables
+    if not os.getenv('FLASK_ENV'):
+        os.environ['FLASK_ENV'] = 'development'
+    if not os.getenv('SECRET_KEY'):
+        os.environ['SECRET_KEY'] = 'your-secret-key-here'
+
+# Ensure we have required environment variables set
+if not os.getenv('FLASK_ENV'):
+    os.environ['FLASK_ENV'] = 'development'
+if not os.getenv('SECRET_KEY'):
+    os.environ['SECRET_KEY'] = 'your-secret-key-here'
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
@@ -79,11 +94,7 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # Start the background scheduler for automatic absent marking
-# This ensures it runs in both development and production
-try:
-    start_scheduler()
-except Exception as e:
-    print(f"Warning: Could not start scheduler: {e}")
+# This will be called after the function is defined
 
 # Register database event handlers after app context is available
 with app.app_context():
@@ -217,8 +228,11 @@ class Timetable(db.Model):
     time_slot_id = db.Column(db.Integer, db.ForeignKey('time_slot.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     student_group_id = db.Column(db.Integer, db.ForeignKey('student_group.id'), nullable=False)
-    semester = db.Column(db.String(20), nullable=False)
-    academic_year = db.Column(db.String(10), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('academic_session.id'), nullable=False)
+    # Keep old fields for backward compatibility during migration
+    semester = db.Column(db.String(20), nullable=True)  # Now nullable for migration
+    academic_year = db.Column(db.String(10), nullable=True)  # Now nullable for migration
     
     # Relationships
     course = db.relationship('Course', backref='timetable_entries')
@@ -230,15 +244,15 @@ class Timetable(db.Model):
     # Constraints - Multi-group timetable with global resource constraints
     __table_args__ = (
         # Group-specific: No double-booking within the same group
-        db.UniqueConstraint('student_group_id', 'classroom_id', 'time_slot_id', 'semester', 'academic_year', 
+        db.UniqueConstraint('student_group_id', 'classroom_id', 'time_slot_id', 'academic_year_id', 'session_id', 
                            name='unique_group_classroom_time'),
-        db.UniqueConstraint('student_group_id', 'teacher_id', 'time_slot_id', 'semester', 'academic_year', 
+        db.UniqueConstraint('student_group_id', 'teacher_id', 'time_slot_id', 'academic_year_id', 'session_id', 
                            name='unique_group_teacher_time'),
         # Global: No classroom conflicts across groups
-        db.UniqueConstraint('classroom_id', 'time_slot_id', 'semester', 'academic_year', 
+        db.UniqueConstraint('classroom_id', 'time_slot_id', 'academic_year_id', 'session_id', 
                            name='unique_global_classroom_time'),
         # Global: No teacher conflicts across groups
-        db.UniqueConstraint('teacher_id', 'time_slot_id', 'semester', 'academic_year', 
+        db.UniqueConstraint('teacher_id', 'time_slot_id', 'academic_year_id', 'session_id', 
                            name='unique_global_teacher_time'),
     )
 
@@ -272,6 +286,9 @@ class Attendance(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     time_slot_id = db.Column(db.Integer, db.ForeignKey('time_slot.id'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('academic_session.id'), nullable=False)
+    class_instance_id = db.Column(db.Integer, db.ForeignKey('class_instance.id'), nullable=True)
     status = db.Column(db.String(20), default='present')  # present, absent, late
     marked_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # faculty who marked
     marked_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -285,7 +302,7 @@ class Attendance(db.Model):
     
     # Constraints
     __table_args__ = (
-        db.UniqueConstraint('student_id', 'course_id', 'date', 'time_slot_id', name='unique_attendance'),
+        db.UniqueConstraint('student_id', 'course_id', 'date', 'time_slot_id', 'academic_year_id', 'session_id', name='unique_attendance'),
     )
     
     def __repr__(self):
@@ -301,19 +318,90 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class QRCode(db.Model):
-    """QR Code model for attendance tracking"""
+    """QR Code model for student attendance"""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     qr_code_hash = db.Column(db.String(255), unique=True, nullable=False)
+    qr_code_image = db.Column(db.Text)  # Base64 encoded image
+    is_active = db.Column(db.Boolean, default=True)
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
     
     # Relationships
     user = db.relationship('User', backref='qr_codes')
     
     def __repr__(self):
-        return f'<QRCode {self.qr_code_hash[:8]}...>'
+        return f'<QRCode {self.user.name} - {self.qr_code_hash[:10]}...>'
+
+class AcademicYear(db.Model):
+    """Academic Year model for managing academic sessions"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)  # e.g., "2024-2025"
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    is_active = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    sessions = db.relationship('AcademicSession', backref='academic_year', cascade='all, delete-orphan')
+    holidays = db.relationship('Holiday', backref='academic_year', cascade='all, delete-orphan')
+    timetables = db.relationship('Timetable', backref='academic_year_rel', cascade='all, delete-orphan')
+    attendance_records = db.relationship('Attendance', backref='academic_year_rel', cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<AcademicYear {self.name}>'
+
+class AcademicSession(db.Model):
+    """Academic Session model for semesters/trimesters"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)  # e.g., "Fall Semester", "Spring Semester"
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    session_type = db.Column(db.String(50), nullable=False)  # semester, trimester, quarter
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    timetables = db.relationship('Timetable', backref='session_rel', cascade='all, delete-orphan')
+    attendance_records = db.relationship('Attendance', backref='session_rel', cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<AcademicSession {self.name} - {self.academic_year.name}>'
+
+class Holiday(db.Model):
+    """Holiday model for managing academic holidays"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)  # e.g., "Christmas Break", "Easter"
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
+    is_recurring = db.Column(db.Boolean, default=False)  # For annual holidays
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<Holiday {self.name} - {self.start_date} to {self.end_date}>'
+
+class ClassInstance(db.Model):
+    """Class Instance model for specific date-based classes"""
+    id = db.Column(db.Integer, primary_key=True)
+    timetable_id = db.Column(db.Integer, db.ForeignKey('timetable.id'), nullable=False)
+    class_date = db.Column(db.Date, nullable=False)  # Specific date for this class
+    is_cancelled = db.Column(db.Boolean, default=False)
+    cancellation_reason = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    timetable = db.relationship('Timetable', backref='class_instances')
+    attendance_records = db.relationship('Attendance', backref='class_instance', cascade='all, delete-orphan')
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('timetable_id', 'class_date', name='unique_class_instance'),
+    )
+    
+    def __repr__(self):
+        return f'<ClassInstance {self.timetable.course.name} - {self.class_date}>'
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -436,6 +524,9 @@ def faculty_dashboard():
         return redirect(url_for('dashboard'))
     
     try:
+        # Import calendar utilities
+        from calendar_utils import get_faculty_today_classes, get_upcoming_classes, get_active_academic_year
+        
         # Get faculty's courses and timetables with optimized queries
         course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
         course_ids = [assignment.course_id for assignment in course_assignments]
@@ -448,27 +539,30 @@ def faculty_dashboard():
             db.joinedload(Timetable.time_slot)
         ).filter_by(teacher_id=current_user.id).all()
         
-        # Get today's classes with optimized query
-        today = datetime.now().strftime('%A')
-        today_classes = db.session.query(Timetable).options(
-            db.joinedload(Timetable.time_slot),
-            db.joinedload(Timetable.course),
-            db.joinedload(Timetable.classroom)
-        ).join(TimeSlot).filter(
-            Timetable.teacher_id == current_user.id,
-            TimeSlot.day == today
-        ).all()
+        # Get today's classes using calendar-based system
+        today_classes = get_faculty_today_classes(current_user.id)
+        
+        # Get upcoming classes for the next 7 days
+        upcoming_classes = get_upcoming_classes(7)
+        
+        # Get active academic year
+        active_year = get_active_academic_year()
                 
     except Exception as e:
         flash(f'Error loading dashboard data: {str(e)}', 'error')
         courses = []
         timetables = []
         today_classes = []
+        upcoming_classes = []
+        active_year = None
     
     return render_template('faculty/dashboard.html', 
                          courses=courses,
                          timetables=timetables,
-                         today_classes=today_classes)
+                         today_classes=today_classes,
+                         upcoming_classes=upcoming_classes,
+                         active_year=active_year,
+                         date=date)
 
 @app.route('/student/dashboard')
 @login_required
@@ -478,6 +572,9 @@ def student_dashboard():
         return redirect(url_for('dashboard'))
     
     try:
+        # Import calendar utilities
+        from calendar_utils import get_student_today_classes, get_upcoming_classes, get_active_academic_year
+        
         # Get student's attendance records with proper joins
         attendance_records = db.session.query(Attendance).options(
             db.joinedload(Attendance.course),
@@ -491,16 +588,14 @@ def student_dashboard():
         late_classes = Attendance.query.filter_by(student_id=current_user.id, status='late').count()
         attendance_percentage = (present_classes / total_classes * 100) if total_classes > 0 else 0
         
-        # Get today's classes with optimized query
-        today = datetime.now().strftime('%A')
-        today_classes = db.session.query(Timetable).options(
-            db.joinedload(Timetable.time_slot),
-            db.joinedload(Timetable.course),
-            db.joinedload(Timetable.teacher),
-            db.joinedload(Timetable.classroom)
-        ).join(TimeSlot).filter(
-            TimeSlot.day == today
-        ).limit(5).all()
+        # Get today's classes using calendar-based system
+        today_classes = get_student_today_classes(current_user.id)
+        
+        # Get upcoming classes for the next 7 days
+        upcoming_classes = get_upcoming_classes(7)
+        
+        # Get active academic year
+        active_year = get_active_academic_year()
                 
     except Exception as e:
         flash(f'Error loading dashboard data: {str(e)}', 'error')
@@ -510,6 +605,8 @@ def student_dashboard():
         late_classes = 0
         attendance_percentage = 0
         today_classes = []
+        upcoming_classes = []
+        active_year = None
     
     return render_template('student/dashboard.html',
                          attendance_records=attendance_records,
@@ -517,7 +614,10 @@ def student_dashboard():
                          present_classes=present_classes,
                          late_classes=late_classes,
                          attendance_percentage=attendance_percentage,
-                         today_classes=today_classes)
+                         today_classes=today_classes,
+                         upcoming_classes=upcoming_classes,
+                         active_year=active_year,
+                         date=date)
 
 # API Routes for AJAX calls
 @app.route('/api/mark-attendance', methods=['POST'])
@@ -4404,11 +4504,24 @@ def scan_qr_code():
             
             print(f"Debug: Processing test attendance for course {course.name} at {time_slot.day} {time_slot.start_time}")
             
+            # Find the class instance for today
+            today = date.today()
+            class_instance = ClassInstance.query.filter_by(
+                timetable_id=db.session.query(Timetable.id).filter_by(
+                    course_id=course_id,
+                    time_slot_id=time_slot_id
+                ).scalar(),
+                class_date=today
+            ).first()
+            
+            if not class_instance:
+                return jsonify({'success': False, 'error': f'No class scheduled for {course.name} on {today.strftime("%A, %B %d, %Y")}'})
+            
             # Check if test attendance already marked for this session
             existing_test_attendance = Attendance.query.filter_by(
                 course_id=course_id,
-                date=date.today(),
-                time_slot_id=time_slot_id,
+                class_instance_id=class_instance.id,
+                date=today,
                 qr_code_used=qr_hash
             ).first()
             
@@ -4428,8 +4541,9 @@ def scan_qr_code():
             test_attendance = Attendance(
                 student_id=test_student.id,  # Use actual student ID for test
                 course_id=course_id,
-                date=date.today(),
                 time_slot_id=time_slot_id,
+                class_instance_id=class_instance.id,
+                date=today,
                 marked_by=current_user.id,
                 qr_code_used=qr_hash,
                 status='present'  # Default status for test
@@ -4475,14 +4589,27 @@ def scan_qr_code():
         if not time_slot:
             return jsonify({'success': False, 'error': f'Time slot with ID {time_slot_id} not found'})
         
+        # Find the class instance for today
+        today = date.today()
+        class_instance = ClassInstance.query.filter_by(
+            timetable_id=db.session.query(Timetable.id).filter_by(
+                course_id=course_id,
+                time_slot_id=time_slot_id
+            ).scalar(),
+            class_date=today
+        ).first()
+        
+        if not class_instance:
+            return jsonify({'success': False, 'error': f'No class scheduled for {course.name} on {today.strftime("%A, %B %d, %Y")}'})
+        
         print(f"Debug: Processing attendance for student {student.name} in course {course.name} at {time_slot.day} {time_slot.start_time}")
         
-        # Check if attendance already marked
+        # Check if attendance already marked for this class instance
         existing_attendance = Attendance.query.filter_by(
             student_id=student.id,
             course_id=course_id,
-            date=date.today(),
-            time_slot_id=time_slot_id
+            class_instance_id=class_instance.id,
+            date=today
         ).first()
         
         if existing_attendance:
@@ -4509,7 +4636,7 @@ def scan_qr_code():
         # Determine attendance status based on time
         # Calculate minutes late (15 minutes grace period)
         grace_period = timedelta(minutes=15)
-        class_start_datetime = datetime.combine(date.today(), start_time)
+        class_start_datetime = datetime.combine(today, start_time)
         late_threshold = class_start_datetime + grace_period
         
         if now > late_threshold:
@@ -4523,8 +4650,9 @@ def scan_qr_code():
         attendance = Attendance(
             student_id=student.id,
             course_id=course_id,
-            date=date.today(),
             time_slot_id=time_slot_id,
+            class_instance_id=class_instance.id,
+            date=today,
             marked_by=current_user.id,
             qr_code_used=qr_hash,
             status=status
@@ -5165,23 +5293,28 @@ def mark_absent_students():
         
         print(f"Running automatic absent marking at {now}")
         
-        # Get all time slots that have ended today
+        # Get all class instances for today that have ended
         ended_classes = []
         
-        # Get all time slots
-        time_slots = TimeSlot.query.all()
+        # Get all class instances for today
+        today_class_instances = ClassInstance.query.filter_by(class_date=today).all()
         
-        for time_slot in time_slots:
+        for class_instance in today_class_instances:
             try:
+                # Get the timetable and time slot for this class instance
+                timetable = class_instance.timetable
+                if not timetable or not timetable.time_slot:
+                    continue
+                
                 # Parse end time
-                end_time = datetime.strptime(time_slot.end_time, '%H:%M').time()
+                end_time = datetime.strptime(timetable.time_slot.end_time, '%H:%M').time()
                 class_end_datetime = datetime.combine(today, end_time)
                 
                 # Check if class has ended (more than 5 minutes after end time to allow for processing)
                 if now > class_end_datetime + timedelta(minutes=5):
-                    ended_classes.append(time_slot)
+                    ended_classes.append(class_instance)
             except ValueError:
-                print(f"Warning: Invalid time format for time slot {time_slot.id}")
+                print(f"Warning: Invalid time format for time slot {timetable.time_slot.id if timetable and timetable.time_slot else 'unknown'}")
                 continue
         
         if not ended_classes:
@@ -5193,52 +5326,53 @@ def mark_absent_students():
         # For each ended class, find students who should be marked absent
         absent_count = 0
         
-        for time_slot in ended_classes:
-            # Get all courses that have classes in this time slot
-            timetables = Timetable.query.filter_by(time_slot_id=time_slot.id).all()
+        for class_instance in ended_classes:
+            timetable = class_instance.timetable
+            if not timetable:
+                continue
             
-            for timetable in timetables:
-                # Get all students in the group for this timetable
-                student_group = timetable.student_group
-                if not student_group:
-                    continue
+            # Get all students in the group for this timetable
+            student_group = timetable.student_group
+            if not student_group:
+                continue
+            
+            # Get all students in this group
+            students = User.query.filter_by(
+                role='student',
+                student_group_id=student_group.id
+            ).all()
+            
+            for student in students:
+                # Check if attendance is already marked for this student, course, and class instance today
+                existing_attendance = Attendance.query.filter_by(
+                    student_id=student.id,
+                    course_id=timetable.course_id,
+                    class_instance_id=class_instance.id,
+                    date=today
+                ).first()
                 
-                # Get all students in this group
-                students = User.query.filter_by(
-                    role='student',
-                    student_group_id=student_group.id
-                ).all()
-                
-                for student in students:
-                    # Check if attendance is already marked for this student, course, and time slot today
-                    existing_attendance = Attendance.query.filter_by(
-                        student_id=student.id,
-                        course_id=timetable.course_id,
-                        time_slot_id=time_slot.id,
-                        date=today
-                    ).first()
+                # If no attendance record exists, mark as absent
+                if not existing_attendance:
+                    # Find a faculty member to mark the attendance (use the course teacher or first available faculty)
+                    faculty = timetable.teacher if timetable.teacher else User.query.filter_by(role='faculty').first()
                     
-                    # If no attendance record exists, mark as absent
-                    if not existing_attendance:
-                        # Find a faculty member to mark the attendance (use the course teacher or first available faculty)
-                        faculty = timetable.teacher if timetable.teacher else User.query.filter_by(role='faculty').first()
+                    if faculty:
+                        absent_attendance = Attendance(
+                            student_id=student.id,
+                            course_id=timetable.course_id,
+                            time_slot_id=timetable.time_slot_id,
+                            class_instance_id=class_instance.id,
+                            date=today,
+                            status='absent',
+                            marked_by=faculty.id,
+                            marked_at=now,
+                            qr_code_used='auto_marked_absent'
+                        )
                         
-                        if faculty:
-                            absent_attendance = Attendance(
-                                student_id=student.id,
-                                course_id=timetable.course_id,
-                                time_slot_id=time_slot.id,
-                                date=today,
-                                status='absent',
-                                marked_by=faculty.id,
-                                marked_at=now,
-                                qr_code_used='auto_marked_absent'
-                            )
-                            
-                            db.session.add(absent_attendance)
-                            absent_count += 1
-                            
-                            print(f"Marked {student.name} as absent for {timetable.course.name} at {time_slot.start_time}-{time_slot.end_time}")
+                        db.session.add(absent_attendance)
+                        absent_count += 1
+                        
+                        print(f"Marked {student.name} as absent for {timetable.course.name} at {timetable.time_slot.start_time}-{timetable.time_slot.end_time}")
         
         if absent_count > 0:
             db.session.commit()
@@ -5275,3 +5409,10 @@ if __name__ == '__main__':
         app.run(debug=True)
     else:
         print("❌ Cannot start application without database connection")
+else:
+    # Start the background scheduler for automatic absent marking when imported
+    # This ensures it runs in both development and production
+    try:
+        start_scheduler()
+    except Exception as e:
+        print(f"Warning: Could not start scheduler: {e}")

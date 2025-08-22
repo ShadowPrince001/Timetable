@@ -106,16 +106,33 @@
     </div>
 </div>
 
+<!-- Academic Year Info -->
+{% if active_year %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <h6><i class="fas fa-calendar-alt me-2"></i>Current Academic Year</h6>
+            <p class="mb-0">
+                <strong>{{ active_year.name }}</strong> | 
+                {{ active_year.start_date.strftime('%B %d, %Y') }} - {{ active_year.end_date.strftime('%B %d, %Y') }}
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Today's Schedule -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card shadow">
             <div class="card-header py-3">
                 <h6 class="m-0 font-weight-bold text-info">
-                    <i class="fas fa-calendar-day me-2"></i>Today's Schedule
+                    <i class="fas fa-calendar-day me-2"></i>Today's Schedule ({{ today_classes|length }})
                 </h6>
+                <small class="text-muted">{{ date.today().strftime('%A, %B %d, %Y') }}</small>
             </div>
             <div class="card-body">
+                {% if today_classes %}
                 <div class="table-responsive">
                     <table class="table table-bordered" width="100%" cellspacing="0">
                         <thead>
@@ -130,20 +147,81 @@
                         <tbody>
                             {% for class in today_classes %}
                             <tr>
-                                <td>{{ class.time_slot.start_time }} - {{ class.time_slot.end_time }}</td>
-                                <td>{{ class.course.name }}</td>
-                                <td>{{ class.teacher.name }}</td>
-                                <td>{{ class.classroom.room_number }}</td>
+                                <td>{{ class.start_time }} - {{ class.end_time }}</td>
+                                <td>{{ class.course_name }} ({{ class.course_code }})</td>
+                                <td>{{ class.teacher }}</td>
+                                <td>{{ class.classroom }}</td>
                                 <td><span class="badge bg-secondary">Scheduled</span></td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="5" class="text-center text-muted">No classes scheduled for today</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No classes scheduled for today</h5>
+                    <p class="text-muted">Enjoy your day off!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upcoming Classes -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-calendar-week me-2"></i>Upcoming Classes (Next 7 Days)
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if upcoming_classes %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Day</th>
+                                <th>Time</th>
+                                <th>Course</th>
+                                <th>Faculty</th>
+                                <th>Classroom</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for class in upcoming_classes %}
+                            {% if not class.is_holiday %}
+                            <tr>
+                                <td>{{ class.date.strftime('%b %d') }}</td>
+                                <td>{{ class.day_name }}</td>
+                                <td>{{ class.start_time }} - {{ class.end_time }}</td>
+                                <td>{{ class.course_name }} ({{ class.course_code }})</td>
+                                <td>{{ class.teacher }}</td>
+                                <td>{{ class.classroom }}</td>
+                            </tr>
+                            {% else %}
+                            <tr class="table-warning">
+                                <td colspan="6" class="text-center">
+                                    <i class="fas fa-umbrella-beach me-2"></i>
+                                    <strong>{{ class.course_name }}</strong> - {{ class.holiday_description or 'Holiday' }}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No upcoming classes</h5>
+                    <p class="text-muted">No classes scheduled for the next 7 days</p>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
