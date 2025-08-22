@@ -207,9 +207,21 @@
                     <button class="btn btn-outline-info" onclick="checkCurrentState()">
                         <i class="fas fa-bug"></i> Debug State
                     </button>
-                    <button class="btn btn-outline-success" onclick="testAttendanceMarking()">
-                        <i class="fas fa-test-tube"></i> Test Attendance
-                    </button>
+                                         <button class="btn btn-outline-success" onclick="testAttendanceMarking()">
+                         <i class="fas fa-test-tube"></i> Test Attendance
+                     </button>
+                     <button class="btn btn-outline-secondary" onclick="testScannerWithoutCamera()">
+                         <i class="fas fa-cog"></i> Test Scanner
+                     </button>
+                     <button class="btn btn-outline-danger" onclick="testDirectAttendance()">
+                         <i class="fas fa-bolt"></i> Direct Test
+                     </button>
+                     <button class="btn btn-outline-warning" onclick="simulateQRScan()">
+                         <i class="fas fa-qrcode"></i> Simulate Scan
+                     </button>
+                     <button class="btn btn-outline-info" onclick="checkSystemStatus()">
+                         <i class="fas fa-info-circle"></i> System Status
+                     </button>
                 </div>
                 <div class="text-center mt-2">
                     <small class="text-muted">
@@ -404,20 +416,54 @@ function startScanner() {
     console.log('Creating new QR scanner...');
     
     try {
+        console.log('Creating scanner with config:', { fps: 10, qrbox: { width: 250, height: 250 } });
+        
         html5QrcodeScanner = new Html5QrcodeScanner(
             "qr-reader",
-            { fps: 10, qrbox: { width: 250, height: 250 } },
+            { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                rememberLastUsedCamera: true,
+                showTorchButtonIfSupported: true
+            },
             false
         );
         
         console.log('Scanner created successfully, rendering...');
-        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-        showStatus('Scanner started successfully!', 'success');
-        console.log('Scanner rendered successfully');
         
-        // Add a visual indicator that scanner is active
-        scannerContainer.style.border = '3px solid #28a745';
-        scannerContainer.style.boxShadow = '0 0 10px rgba(40, 167, 69, 0.5)';
+                 // Render the scanner with proper error handling
+         html5QrcodeScanner.render(
+             function(decodedText, decodedResult) {
+                 console.log('🎯 SCAN SUCCESS CALLBACK TRIGGERED!');
+                 console.log('Decoded text:', decodedText);
+                 console.log('Decoded result:', decodedResult);
+                 onScanSuccess(decodedText, decodedResult);
+             },
+             function(error) {
+                 console.log('❌ Scan failure callback triggered:', error);
+                 onScanFailure(error);
+             }
+         );
+        
+                 showStatus('Scanner started successfully!', 'success');
+         console.log('Scanner rendered successfully');
+         
+         // Add a visual indicator that scanner is active
+         scannerContainer.style.border = '3px solid #28a745';
+         scannerContainer.style.boxShadow = '0 0 10px rgba(40, 167, 69, 0.5)';
+         
+         // Add a small delay to ensure scanner is fully initialized
+         setTimeout(() => {
+             console.log('Scanner initialization delay completed');
+             showStatus('Scanner is ready to scan!', 'success');
+             
+             // Check if scanner is still active
+             if (html5QrcodeScanner) {
+                 console.log('Scanner is still active after delay');
+             } else {
+                 console.log('Scanner was cleared during initialization');
+             }
+         }, 1000);
         
     } catch (error) {
         console.error('Error creating scanner:', error);
@@ -455,19 +501,35 @@ function stopScanner() {
 }
 
 function onScanSuccess(decodedText, decodedResult) {
+    console.log('QR Code scanned successfully:', decodedText);
+    console.log('Scan result:', decodedResult);
+    
     // Stop scanner after successful scan
     stopScanner();
     
     // Mark attendance
-    markAttendance(decodedText);
+    markQRAttendance(decodedText);
 }
 
 function onScanFailure(error) {
     // Handle scan failure silently
+    console.log('Scan failure (this is normal):', error);
 }
 
-function markAttendance(qrHash) {
-    console.log('markAttendance called with qrHash:', qrHash);
+// Function to clear error messages
+function clearErrorMessages() {
+    const errorMessages = document.querySelectorAll('.status-error');
+    errorMessages.forEach(msg => msg.remove());
+}
+
+// Function to clear success messages
+function clearSuccessMessages() {
+    const successMessages = document.querySelectorAll('.status-success');
+    successMessages.forEach(msg => msg.remove());
+}
+
+function markQRAttendance(qrHash) {
+    console.log('markQRAttendance called with qrHash:', qrHash);
     console.log('Current state - courseId:', currentCourseId, 'timeSlotId:', currentTimeSlotId);
     
     if (!currentCourseId || !currentTimeSlotId) {
@@ -645,7 +707,7 @@ function manualMarkAttendance() {
     }
     
     console.log('Manual attendance marking with hash:', qrHash);
-    markAttendance(qrHash);
+    markQRAttendance(qrHash);
     
     // Clear input after marking
     qrInput.value = '';
@@ -665,7 +727,10 @@ function testAttendanceMarking() {
     console.log('Using test hash:', testHash);
     
     showStatus('Testing with sample QR code...', 'info');
-    markAttendance(testHash);
+    
+    // Simulate the scan success flow
+    console.log('Simulating scan success...');
+    onScanSuccess(testHash, { decodedText: testHash });
 }
 
 function testScanner() {
@@ -732,7 +797,91 @@ function testScanner() {
     }
 }
 
-function checkScannerStatus() {
+// Add a new function to test the scanner without camera
+function testScannerWithoutCamera() {
+    console.log('Testing scanner without camera...');
+    
+    if (!currentCourseId || !currentTimeSlotId) {
+        showStatus('Please select both course and time slot before testing', 'error');
+        return;
+    }
+    
+    // Test if we can create a scanner object
+    if (typeof Html5QrcodeScanner === 'undefined') {
+        showStatus('HTML5 QR Scanner library not loaded', 'error');
+        return;
+    }
+    
+    // Test if we can access the scanner container
+    const scannerContainer = document.getElementById('qr-reader');
+    if (!scannerContainer) {
+        showStatus('Scanner container not found', 'error');
+        return;
+    }
+    
+    try {
+        // Create a test scanner instance
+        const testScanner = new Html5QrcodeScanner(
+            "qr-reader",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            false
+        );
+        
+        showStatus('Scanner creation test successful!', 'success');
+        
+        // Clean up test scanner
+        testScanner.clear();
+        
+        // Show test message in container
+        scannerContainer.innerHTML = '<div class="alert alert-success">Scanner creation test successful! Library is working correctly.</div>';
+        
+    } catch (error) {
+        console.error('Scanner creation test failed:', error);
+        showStatus('Scanner creation test failed: ' + error.message, 'error');
+        scannerContainer.innerHTML = '<div class="alert alert-danger">Scanner creation test failed: ' + error.message + '</div>';
+         }
+ }
+
+ // Test attendance marking directly without scanner
+ function testDirectAttendance() {
+     console.log('Testing direct attendance marking...');
+     
+     if (!currentCourseId || !currentTimeSlotId) {
+         showStatus('Please select course and time slot first', 'error');
+         return;
+     }
+     
+     // Generate a test QR hash
+     const testHash = 'test-qr-' + Date.now();
+     console.log('Using test hash:', testHash);
+     
+     showStatus('Testing direct attendance marking...', 'info');
+     
+     // Call markQRAttendance directly
+     markQRAttendance(testHash);
+ }
+
+ // Simulate a QR code scan to test the flow
+ function simulateQRScan() {
+     console.log('Simulating QR code scan...');
+     
+     if (!currentCourseId || !currentTimeSlotId) {
+         showStatus('Please select course and time slot first', 'error');
+         return;
+     }
+     
+     // Generate a test QR hash
+     const testHash = 'test-qr-' + Date.now();
+     console.log('Simulating scan with hash:', testHash);
+     
+     showStatus('Simulating QR code scan...', 'info');
+     
+     // Simulate the exact flow that would happen after a real scan
+     console.log('🎯 Simulating scan success callback...');
+     onScanSuccess(testHash, { decodedText: testHash });
+ }
+
+ function checkScannerStatus() {
     const status = {
         libraryLoaded: typeof Html5QrcodeScanner !== 'undefined',
         scannerActive: html5QrcodeScanner !== null,
@@ -752,8 +901,44 @@ function checkScannerStatus() {
     
     showStatus(statusMessage, 'info');
     
-    return status;
-}
+         return status;
+ }
+
+ // Check system status including students, courses, and time slots
+ function checkSystemStatus() {
+     console.log('Checking system status...');
+     
+     // Check if we have the required data
+     const courseSelect = document.getElementById('course-select');
+     const timeSlotSelect = document.getElementById('timeslot-select');
+     
+     let statusMessage = 'System Status:\n';
+     
+     if (courseSelect && courseSelect.options.length > 1) {
+         statusMessage += `✅ Courses: ${courseSelect.options.length - 1} available\n`;
+     } else {
+         statusMessage += `❌ Courses: No courses available\n`;
+     }
+     
+     if (timeSlotSelect && timeSlotSelect.options.length > 1) {
+         statusMessage += `✅ Time Slots: ${timeSlotSelect.options.length - 1} available\n`;
+     } else {
+         statusMessage += `❌ Time Slots: No time slots available\n`;
+     }
+     
+     if (currentCourseId && currentTimeSlotId) {
+         statusMessage += `✅ Session: Course ${currentCourseId}, Time Slot ${currentTimeSlotId}\n`;
+     } else {
+         statusMessage += `❌ Session: Please select course and time slot\n`;
+     }
+     
+     // Add warning about students if needed
+     statusMessage += `\n💡 Note: Test attendance requires at least one student in the system.`;
+     
+     showStatus(statusMessage, 'info');
+     
+     return statusMessage;
+ }
 
 function testBasicJS() {
     console.log('Basic JS test function called');

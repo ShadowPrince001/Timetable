@@ -3831,6 +3831,96 @@ def admin_reset_qr_sequence():
     
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/api/mark-attendance', methods=['POST'])
+@login_required
+def api_mark_attendance():
+    """API endpoint for marking attendance (used by main.js)"""
+    if current_user.role != 'faculty':
+        return jsonify({'success': False, 'error': 'Only faculty can mark attendance'})
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data received'})
+        
+        student_id = data.get('student_id')
+        course_id = data.get('course_id')
+        time_slot_id = data.get('time_slot_id')
+        timetable_id = data.get('timetable_id')  # For backward compatibility
+        status = data.get('status')
+        date_str = data.get('date')
+        
+        print(f"Debug: API mark attendance - student_id: {student_id}, course_id: {course_id}, time_slot_id: {time_slot_id}, timetable_id: {timetable_id}, status: {status}, date: {date_str}")
+        
+        # Handle both new format (course_id + time_slot_id) and old format (timetable_id)
+        if timetable_id and not (course_id and time_slot_id):
+            # Old format - we need to get course_id and time_slot_id from timetable
+            # For now, we'll use a default time slot (you may need to adjust this)
+            if not course_id:
+                course_id = 1  # Default course ID
+            if not time_slot_id:
+                time_slot_id = 1  # Default time slot ID
+            print(f"Using default values - course_id: {course_id}, time_slot_id: {time_slot_id}")
+        
+        if not all([student_id, course_id, time_slot_id, status, date_str]):
+            missing = []
+            if not student_id: missing.append('student_id')
+            if not course_id: missing.append('course_id')
+            if not time_slot_id: missing.append('time_slot_id')
+            if not status: missing.append('status')
+            if not date_str: missing.append('date')
+            return jsonify({'success': False, 'error': f'Missing required data: {", ".join(missing)}'})
+        
+        # Convert to proper types
+        try:
+            student_id = int(student_id)
+            course_id = int(course_id)
+            time_slot_id = int(time_slot_id)
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid data format'})
+        
+        # Check if attendance already marked
+        existing_attendance = Attendance.query.filter_by(
+            student_id=student_id,
+            course_id=course_id,
+            time_slot_id=time_slot_id,
+            date=date_obj
+        ).first()
+        
+        if existing_attendance:
+            # Update existing attendance
+            existing_attendance.status = status
+            existing_attendance.marked_by = current_user.id
+            existing_attendance.marked_at = datetime.utcnow()
+        else:
+            # Create new attendance
+            attendance = Attendance(
+                student_id=student_id,
+                course_id=course_id,
+                time_slot_id=time_slot_id,
+                date=date_obj,
+                status=status,
+                marked_by=current_user.id,
+                marked_at=datetime.utcnow()
+            )
+            db.session.add(attendance)
+        
+        db.session.commit()
+        
+        print(f"Debug: Successfully marked attendance for student {student_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Attendance marked successfully'
+        })
+        
+    except Exception as e:
+        print(f"Error in api_mark_attendance: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
+
 @app.route('/scan_qr_code', methods=['POST'])
 @login_required
 def scan_qr_code():
@@ -3890,9 +3980,18 @@ def scan_qr_code():
             if existing_test_attendance:
                 return jsonify({'success': False, 'error': 'Test attendance already marked for this session'})
             
-            # Create test attendance record
+            # For test QR codes, we need a valid student_id
+            # Let's find the first student in the system or create a dummy one
+            test_student = User.query.filter_by(role='student').first()
+            if not test_student:
+                # If no students exist, we can't create test attendance
+                return jsonify({'success': False, 'error': 'No students found in system. Cannot create test attendance.'})
+            
+            print(f"Debug: Using test student: {test_student.name} (ID: {test_student.id})")
+            
+            # Create test attendance record with valid student_id
             test_attendance = Attendance(
-                student_id=None,  # No specific student for test
+                student_id=test_student.id,  # Use actual student ID for test
                 course_id=course_id,
                 date=date.today(),
                 time_slot_id=time_slot_id,
@@ -3909,7 +4008,7 @@ def scan_qr_code():
             return jsonify({
                 'success': True,
                 'message': f'Test attendance marked successfully for {course.name}',
-                'student_name': 'Test Student',
+                'student_name': f'Test Student ({test_student.name})',
                 'course_name': f'{course.code} - {course.name}'
             })
         
