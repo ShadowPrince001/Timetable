@@ -76,7 +76,7 @@
                                         <p class="mb-1 text-muted">{{ notification.message }}</p>
                                         <small class="text-muted">
                                             <i class="fas fa-clock me-1"></i>
-                                            {{ notification.created_at.strftime('%B %d, %Y at %I:%M %p') if notification.created_at else 'Unknown time' }}
+                                            {{ notification.created_at|safe_strftime('%B %d, %Y at %I:%M %p') }}
                                         </small>
                                     </div>
                                     <div class="ms-3">

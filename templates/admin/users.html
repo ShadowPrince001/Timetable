@@ -119,7 +119,7 @@
                                         <span class="text-muted">N/A</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ user.created_at|safe_strftime('%Y-%m-%d') }}</td>
                                 <td>
                                     {% if user.role == 'faculty' %}
                                     <a href="{{ url_for('admin_teacher_timetable', teacher_id=user.id) }}" class="btn btn-sm btn-outline-success" title="View Timetable">

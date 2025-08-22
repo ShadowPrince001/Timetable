@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Statistics - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-chart-line text-primary me-2"></i>
+            Attendance Statistics
+        </h1>
+        <p class="text-muted">Comprehensive overview of attendance patterns and performance metrics</p>
+    </div>
+</div>
+
+<!-- Overall Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Attendance Records
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_attendance }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-clipboard-check fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Overall Attendance Rate
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ "%.1f"|format(attendance_percentage) }}%</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-percentage fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Present Records
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_present }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-danger shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                            Absent + Late
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_absent + total_late }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-times-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Student Performance -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-users me-2"></i>Student Performance
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Classes</th>
+                                <th>Present</th>
+                                <th>Rate</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in student_stats[:10] %}
+                            <tr>
+                                <td>{{ stat.student.name }}</td>
+                                <td>{{ stat.total_classes }}</td>
+                                <td>{{ stat.present_classes }}</td>
+                                <td>{{ "%.1f"|format(stat.attendance_percentage) }}%</td>
+                                <td>
+                                    {% if stat.status == 'Good' %}
+                                        <span class="badge bg-success">Good</span>
+                                    {% elif stat.status == 'Warning' %}
+                                        <span class="badge bg-warning">Warning</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Critical</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Faculty and Course Performance -->
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-chalkboard-teacher me-2"></i>Faculty Performance
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Faculty</th>
+                                <th>Marked</th>
+                                <th>Present</th>
+                                <th>Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in faculty_stats %}
+                            <tr>
+                                <td>{{ stat.faculty.name }}</td>
+                                <td>{{ stat.total_marked }}</td>
+                                <td>{{ stat.present_marked }}</td>
+                                <td>{{ "%.1f"|format(stat.attendance_percentage) }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-book me-2"></i>Course Performance
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Course</th>
+                                <th>Classes</th>
+                                <th>Present</th>
+                                <th>Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in course_stats %}
+                            <tr>
+                                <td>{{ stat.course.code }} - {{ stat.course.name }}</td>
+                                <td>{{ stat.total_classes }}</td>
+                                <td>{{ stat.present_classes }}</td>
+                                <td>{{ "%.1f"|format(stat.attendance_percentage) }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <a href="{{ url_for('export_csv', table_name='attendance') }}" class="btn btn-outline-success">
+                    <i class="fas fa-download me-1"></i>Export Attendance CSV
+                </a>
+                <a href="{{ url_for('admin_add_sample_attendance') }}" class="btn btn-outline-info">
+                    <i class="fas fa-plus me-1"></i>Add Sample Data
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Prepare data for the chart
+const chartData = {
+    labels: [
+        {% for date, stats in daily_stats.items()|sort %}
+            '{{ date.strftime("%m/%d") }}',
+        {% endfor %}
+    ],
+    datasets: [{
+        label: 'Attendance Rate (%)',
+        data: [
+            {% for date, stats in daily_stats.items()|sort %}
+                {{ "%.1f"|format(stats.percentage) }},
+            {% endfor %}
+        ],
+        borderColor: 'rgb(75, 192, 192)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        tension: 0.1
+    }]
+};
+
+// Create the chart
+const ctx = document.getElementById('attendanceTrendChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: chartData,
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Attendance: ' + context.parsed.y.toFixed(1) + '%';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

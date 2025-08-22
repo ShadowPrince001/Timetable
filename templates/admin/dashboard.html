@@ -141,6 +141,12 @@
                             <span>Add Entry</span>
                         </a>
                     </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_attendance_statistics') }}" class="btn btn-success btn-lg btn-block h-100 d-flex flex-column justify-content-center align-items-center">
+                            <i class="fas fa-chart-bar fa-2x mb-2"></i>
+                            <span>Attendance Stats</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -191,6 +197,11 @@
                         </a>
                     </div>
                     <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_attendance_statistics') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-chart-bar me-2"></i>Attendance Statistics
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
                         <a href="{{ url_for('admin_add_sample_attendance') }}" class="btn btn-outline-secondary w-100">
                             <i class="fas fa-plus me-2"></i>Add Sample Data
                         </a>
@@ -230,6 +241,12 @@
                         <a href="{{ url_for('admin_reset_qr_sequence') }}" class="btn btn-outline-danger w-100" 
                            onclick="return confirm('This will reset the QR code sequence. Continue?')">
                             <i class="fas fa-sync-alt me-2"></i>Reset QR Sequence
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_reset_student_group_course_sequence') }}" class="btn btn-outline-warning w-100" 
+                           onclick="return confirm('This will reset the student group course sequence. Continue?')">
+                            <i class="fas fa-sync-alt me-2"></i>Reset Group Course Sequence
                         </a>
                     </div>
                 </div>
@@ -351,8 +368,8 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if attendance.timetable and attendance.timetable.course %}
-                                        {{ attendance.timetable.course.name }}
+                                    {% if attendance.course %}
+                                        {{ attendance.course.name }}
                                     {% else %}
                                         <span class="text-muted">Unknown Course</span>
                                     {% endif %}
@@ -366,10 +383,10 @@
                                         <span class="badge bg-warning">Late</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ attendance.date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ attendance.date|safe_strftime('%Y-%m-%d') }}</td>
                                 <td>
-                                    {% if attendance.marked_by_user %}
-                                        {{ attendance.marked_by_user.name }}
+                                    {% if attendance.faculty %}
+                                        {{ attendance.faculty.name }}
                                     {% else %}
                                         <span class="text-muted">Unknown</span>
                                     {% endif %}

@@ -18,11 +18,25 @@ from werkzeug.utils import secure_filename
 import qrcode
 import base64
 import uuid
+from sqlalchemy.exc import IntegrityError
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
+
+# Custom Jinja2 filter for safe datetime formatting
+@app.template_filter('safe_strftime')
+def safe_strftime(value, format_string):
+    """Safely format datetime objects, handling both datetime and string inputs"""
+    if value is None:
+        return 'N/A'
+    if hasattr(value, 'strftime'):
+        try:
+            return value.strftime(format_string)
+        except (ValueError, TypeError):
+            return str(value)
+    return str(value)
 
 # Database configuration - PostgreSQL preferred, SQLite fallback for development
 database_url = os.getenv('DATABASE_URL')
@@ -1498,17 +1512,44 @@ def admin_manage_group_courses(group_id):
         # Remove existing course assignments
         StudentGroupCourse.query.filter_by(student_group_id=group_id).delete()
         
-        # Add new course assignments
-        for course_id in course_ids:
-            if course_id:
-                group_course = StudentGroupCourse(
-                    student_group_id=group_id,
-                    course_id=int(course_id)
-                )
-                db.session.add(group_course)
+        # Add new course assignments with retry logic for sequence issues
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                # Clear any existing objects in session
+                db.session.rollback()
+                
+                # Add new course assignments
+                for course_id in course_ids:
+                    if course_id:
+                        group_course = StudentGroupCourse(
+                            student_group_id=group_id,
+                            course_id=int(course_id)
+                        )
+                        db.session.add(group_course)
+                
+                db.session.commit()
+                flash('Group courses updated successfully', 'success')
+                return redirect(url_for('admin_student_groups'))
+                
+            except IntegrityError as e:
+                if 'duplicate key value violates unique constraint "student_group_course_pkey"' in str(e) and attempt == 0:
+                    print(f"Sequence issue detected, attempting to reset sequence...")
+                    if reset_student_group_course_sequence():
+                        print("Sequence reset successful, retrying...")
+                        continue
+                    else:
+                        print("Failed to reset sequence")
+                        break
+                else:
+                    # Re-raise if it's not a sequence issue or we've already tried
+                    raise
+            except Exception as e:
+                # Re-raise any other exceptions
+                raise
         
-        db.session.commit()
-        flash('Group courses updated successfully', 'success')
+        # If we get here, all retries failed
+        flash('Failed to update group courses due to database sequence issue. Please contact administrator.', 'error')
         return redirect(url_for('admin_student_groups'))
     
     # Get all courses and current group courses
@@ -2342,7 +2383,8 @@ def admin_add_sample_attendance():
                     # Check if attendance already exists
                     existing = Attendance.query.filter_by(
                         student_id=student.id,
-                        timetable_id=timetable.id,
+                        course_id=timetable.course_id,
+                        time_slot_id=timetable.time_slot_id,
                         date=date
                     ).first()
                     
@@ -2353,7 +2395,8 @@ def admin_add_sample_attendance():
                         
                         new_attendance = Attendance(
                             student_id=student.id,
-                            timetable_id=timetable.id,
+                            course_id=timetable.course_id,
+                            time_slot_id=timetable.time_slot_id,
                             date=date,
                             status=status,
                             marked_by=current_user.id
@@ -3813,6 +3856,30 @@ def reset_qr_code_sequence():
         # Don't raise the error, just log it
         return False
 
+def reset_student_group_course_sequence():
+    """Reset the PostgreSQL sequence for student_group_course table to fix sequence issues"""
+    try:
+        # Check if we're using PostgreSQL
+        if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
+            # Get the current maximum ID from student_group_course table
+            result = db.session.execute(db.text("SELECT COALESCE(MAX(id), 0) FROM student_group_course"))
+            max_id = result.scalar()
+            
+            if max_id is not None:
+                # Reset the sequence to start from max_id + 1
+                db.session.execute(db.text(f"SELECT setval('student_group_course_id_seq', {max_id + 1}, false)"))
+                db.session.commit()
+                print(f"Reset student_group_course sequence to {max_id + 1}")
+                return True
+        else:
+            # For SQLite, this function is not needed
+            print("SQLite database detected - sequence reset not needed")
+            return True
+    except Exception as e:
+        print(f"Error resetting sequence: {e}")
+        # Don't raise the error, just log it
+        return False
+
 @app.route('/admin/reset_qr_sequence')
 @login_required
 def admin_reset_qr_sequence():
@@ -3826,6 +3893,24 @@ def admin_reset_qr_sequence():
             flash('QR code sequence reset successfully', 'success')
         else:
             flash('Failed to reset QR code sequence', 'error')
+    except Exception as e:
+        flash(f'Error resetting sequence: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/reset_student_group_course_sequence')
+@login_required
+def admin_reset_student_group_course_sequence():
+    """Admin route to manually reset student group course sequence"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        if reset_student_group_course_sequence():
+            flash('Student group course sequence reset successfully', 'success')
+        else:
+            flash('Failed to reset student group course sequence', 'error')
     except Exception as e:
         flash(f'Error resetting sequence: {str(e)}', 'error')
     
@@ -4236,6 +4321,156 @@ def init_database():
 def init_database_page():
     """Page to initialize database tables on Render"""
     return render_template('init_db.html')
+
+@app.route('/admin/attendance_statistics')
+@login_required
+def admin_attendance_statistics():
+    """Show comprehensive attendance statistics"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Overall statistics
+        total_attendance = Attendance.query.count()
+        total_present = Attendance.query.filter_by(status='present').count()
+        total_absent = Attendance.query.filter_by(status='absent').count()
+        total_late = Attendance.query.filter_by(status='late').count()
+        
+        # Calculate percentages
+        attendance_percentage = (total_present / total_attendance * 100) if total_attendance > 0 else 0
+        absent_percentage = (total_absent / total_attendance * 100) if total_attendance > 0 else 0
+        late_percentage = (total_late / total_attendance * 100) if total_attendance > 0 else 0
+        
+        # Student statistics
+        students = User.query.filter_by(role='student').all()
+        student_stats = []
+        for student in students:
+            student_attendance = Attendance.query.filter_by(student_id=student.id).all()
+            total_classes = len(student_attendance)
+            present_classes = len([a for a in student_attendance if a.status == 'present'])
+            attendance_pct = (present_classes / total_classes * 100) if total_classes > 0 else 0
+            
+            student_stats.append({
+                'student': student,
+                'total_classes': total_classes,
+                'present_classes': present_classes,
+                'attendance_percentage': attendance_pct,
+                'status': 'Good' if attendance_pct >= 75 else 'Warning' if attendance_pct >= 60 else 'Critical'
+            })
+        
+        # Sort students by attendance percentage
+        student_stats.sort(key=lambda x: x['attendance_percentage'], reverse=True)
+        
+        # Faculty statistics
+        faculty_stats = []
+        faculty_users = User.query.filter_by(role='faculty').all()
+        for faculty in faculty_users:
+            marked_attendance = Attendance.query.filter_by(marked_by=faculty.id).all()
+            total_marked = len(marked_attendance)
+            present_marked = len([a for a in marked_attendance if a.status == 'present'])
+            
+            faculty_stats.append({
+                'faculty': faculty,
+                'total_marked': total_marked,
+                'present_marked': present_marked,
+                'attendance_percentage': (present_marked / total_marked * 100) if total_marked > 0 else 0
+            })
+        
+        # Course statistics
+        courses = Course.query.all()
+        course_stats = []
+        for course in courses:
+            course_attendance = Attendance.query.filter_by(course_id=course.id).all()
+            total_course_classes = len(course_attendance)
+            present_course_classes = len([a for a in course_attendance if a.status == 'present'])
+            
+            course_stats.append({
+                'course': course,
+                'total_classes': total_course_classes,
+                'present_classes': present_course_classes,
+                'attendance_percentage': (present_course_classes / total_course_classes * 100) if total_course_classes > 0 else 0
+            })
+        
+        # Group statistics
+        groups = StudentGroup.query.all()
+        group_stats = []
+        for group in groups:
+            group_students = User.query.filter_by(group_id=group.id).all()
+            group_total_attendance = 0
+            group_total_present = 0
+            
+            for student in group_students:
+                student_attendance = Attendance.query.filter_by(student_id=student.id).all()
+                group_total_attendance += len(student_attendance)
+                group_total_present += len([a for a in student_attendance if a.status == 'present'])
+            
+            group_stats.append({
+                'group': group,
+                'total_students': len(group_students),
+                'total_attendance': group_total_attendance,
+                'total_present': group_total_present,
+                'attendance_percentage': (group_total_present / group_total_attendance * 100) if group_total_attendance > 0 else 0
+            })
+        
+        # Recent attendance trends (last 30 days)
+        thirty_days_ago = datetime.now().date() - timedelta(days=30)
+        recent_attendance = Attendance.query.filter(Attendance.date >= thirty_days_ago).all()
+        
+        # Daily attendance for the last 30 days
+        daily_stats = {}
+        for i in range(30):
+            date = datetime.now().date() - timedelta(days=i)
+            day_attendance = [a for a in recent_attendance if a.date == date]
+            total_day = len(day_attendance)
+            present_day = len([a for a in day_attendance if a.status == 'present'])
+            
+            daily_stats[date] = {
+                'total': total_day,
+                'present': present_day,
+                'percentage': (present_day / total_day * 100) if total_day > 0 else 0
+            }
+        
+        # Department statistics
+        departments = db.session.query(User.department).filter(User.department.isnot(None)).distinct().all()
+        dept_stats = []
+        for dept in departments:
+            dept_name = dept[0]
+            dept_students = User.query.filter_by(role='student', department=dept_name).all()
+            dept_total_attendance = 0
+            dept_total_present = 0
+            
+            for student in dept_students:
+                student_attendance = Attendance.query.filter_by(student_id=student.id).all()
+                dept_total_attendance += len(student_attendance)
+                dept_total_present += len([a for a in student_attendance if a.status == 'present'])
+            
+            dept_stats.append({
+                'department': dept_name,
+                'total_students': len(dept_students),
+                'total_attendance': dept_total_attendance,
+                'total_present': dept_total_present,
+                'attendance_percentage': (dept_total_present / dept_total_attendance * 100) if dept_total_attendance > 0 else 0
+            })
+        
+        return render_template('admin/attendance_statistics.html',
+                             total_attendance=total_attendance,
+                             total_present=total_present,
+                             total_absent=total_absent,
+                             total_late=total_late,
+                             attendance_percentage=attendance_percentage,
+                             absent_percentage=absent_percentage,
+                             late_percentage=late_percentage,
+                             student_stats=student_stats,
+                             faculty_stats=faculty_stats,
+                             course_stats=course_stats,
+                             group_stats=group_stats,
+                             daily_stats=daily_stats,
+                             dept_stats=dept_stats)
+                             
+    except Exception as e:
+        flash(f'Error loading attendance statistics: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
 
 if __name__ == '__main__':
     app.run(debug=True)

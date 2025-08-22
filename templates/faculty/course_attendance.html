@@ -125,7 +125,7 @@
                         <tbody>
                             {% for record in attendance_records %}
                             <tr>
-                                <td>{{ record.date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ record.date|safe_strftime('%Y-%m-%d') }}</td>
                                 <td>{{ record.student.name }}</td>
                                 <td>{{ record.student.username }}</td>
                                 <td>
@@ -137,8 +137,8 @@
                                         <span class="badge bg-warning">Late</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ record.marked_at.strftime('%H:%M:%S') }}</td>
-                                <td>{{ record.marked_by_user.name }}</td>
+                                <td>{{ record.marked_at|safe_strftime('%H:%M:%S') }}</td>
+                                <td>{{ record.faculty.name }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

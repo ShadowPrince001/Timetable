@@ -173,9 +173,9 @@
                         <tbody>
                             {% for record in attendance_records %}
                             <tr>
-                                <td>{{ record.date.strftime('%Y-%m-%d') }}</td>
-                                <td>{{ record.timetable.course.name }}</td>
-                                <td>{{ record.timetable.teacher.name }}</td>
+                                <td>{{ record.date|safe_strftime('%Y-%m-%d') }}</td>
+                                <td>{{ record.course.name }}</td>
+                                <td>{{ record.faculty.name }}</td>
                                 <td>
                                     {% if record.status == 'present' %}
                                         <span class="badge bg-success">Present</span>
@@ -185,7 +185,7 @@
                                         <span class="badge bg-warning">Late</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ record.marked_at.strftime('%H:%M') }}</td>
+                                <td>{{ record.marked_at|safe_strftime('%H:%M') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

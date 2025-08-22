@@ -101,11 +101,11 @@
                 <div class="row text-center">
                     <div class="col-6">
                         <h6 class="text-primary">Member Since</h6>
-                        <small class="text-muted">{{ user.created_at.strftime('%b %Y') if user.created_at else 'N/A' }}</small>
+                        <small class="text-muted">{{ user.created_at|safe_strftime('%b %Y') }}</small>
                     </div>
                     <div class="col-6">
                         <h6 class="text-primary">Last Login</h6>
-                        <small class="text-muted">{{ user.last_login.strftime('%b %d') if user.last_login else 'N/A' }}</small>
+                        <small class="text-muted">{{ user.last_login|safe_strftime('%b %d') }}</small>
                     </div>
                 </div>
             </div>

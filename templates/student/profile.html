@@ -82,7 +82,7 @@
                 <div class="mb-3">
                     <div class="d-flex justify-content-between">
                         <span>Member Since:</span>
-                        <strong>{{ user.created_at.strftime('%B %Y') }}</strong>
+                        <strong>{{ user.created_at|safe_strftime('%B %Y') }}</strong>
                     </div>
                 </div>
             </div>
@@ -138,7 +138,7 @@
                         <div class="col-md-6">
                             <div class="form-group mb-3">
                                 <label for="created_at" class="form-label">Account Created</label>
-                                <input type="text" class="form-control" id="created_at" value="{{ user.created_at.strftime('%B %d, %Y') }}" readonly>
+                                <input type="text" class="form-control" id="created_at" value="{{ user.created_at|safe_strftime('%B %d, %Y') }}" readonly>
                             </div>
                         </div>
                     </div>

@@ -1,5 +1,16 @@
 // Main JavaScript for Timetable & Attendance System
 
+// Global error handler for datepicker/timepicker issues
+window.addEventListener('error', function(e) {
+    if (e.message && e.message.includes('datepicker is not a function')) {
+        console.warn('Datepicker error detected, initializing fallback...');
+        initializePickers();
+    } else if (e.message && e.message.includes('timepicker is not a function')) {
+        console.warn('Timepicker error detected, initializing fallback...');
+        initializePickers();
+    }
+});
+
 $(document).ready(function() {
     // Initialize tooltips
     try {
@@ -114,18 +125,41 @@ $(document).ready(function() {
     }
 
     // Date picker initialization
-    $('.date-picker').datepicker({
-        format: 'yyyy-mm-dd',
-        autoclose: true,
-        todayHighlight: true
-    });
+    if ($.fn.datepicker) {
+        $('.date-picker').datepicker({
+            format: 'yyyy-mm-dd',
+            autoclose: true,
+            todayHighlight: true
+        });
+    } else {
+        // Fallback: convert date-picker inputs to HTML5 date inputs
+        $('.date-picker').each(function() {
+            var $input = $(this);
+            if (!$input.attr('type')) {
+                $input.attr('type', 'date');
+            }
+        });
+        console.log('jQuery UI datepicker not available, using HTML5 date inputs as fallback');
+    }
 
     // Time picker initialization
-    $('.time-picker').timepicker({
-        minuteStep: 15,
-        showMeridian: false,
-        defaultTime: false
-    });
+    if ($.fn.timepicker) {
+        $('.time-picker').timepicker({
+            minuteStep: 15,
+            showMeridian: false,
+            defaultTime: false
+        });
+    } else {
+        // Fallback: convert time-picker inputs to HTML5 time inputs
+        $('.time-picker').each(function() {
+            var $input = $(this);
+            if (!$input.attr('type')) {
+                $input.attr('type', 'time');
+                $input.attr('step', '900'); // 15 minutes in seconds
+            }
+        });
+        console.log('Bootstrap timepicker not available, using HTML5 time inputs as fallback');
+    }
 
     // Form validation
     $('.needs-validation').on('submit', function(e) {
@@ -593,6 +627,56 @@ function updatePasswordStrength(field, strength) {
                 .text(strengthText[strength]);
     }
 }
+
+// Utility function to safely initialize date and time pickers
+function initializePickers() {
+    // Initialize date pickers
+    if ($.fn.datepicker) {
+        $('.date-picker').datepicker({
+            format: 'yyyy-mm-dd',
+            autoclose: true,
+            todayHighlight: true
+        });
+    } else {
+        // Fallback: convert date-picker inputs to HTML5 date inputs
+        $('.date-picker').each(function() {
+            var $input = $(this);
+            if (!$input.attr('type')) {
+                $input.attr('type', 'date');
+            }
+        });
+        console.log('jQuery UI datepicker not available, using HTML5 date inputs as fallback');
+    }
+
+    // Initialize time pickers
+    if ($.fn.timepicker) {
+        $('.time-picker').timepicker({
+            minuteStep: 15,
+            showMeridian: false,
+            defaultTime: false
+        });
+    } else {
+        // Fallback: convert time-picker inputs to HTML5 time inputs
+        $('.time-picker').each(function() {
+            var $input = $(this);
+            if (!$input.attr('type')) {
+                $input.attr('type', 'time');
+                $input.attr('step', '900'); // 15 minutes in seconds
+            }
+        });
+        console.log('Bootstrap timepicker not available, using HTML5 time inputs as fallback');
+    }
+}
+
+// Call the utility function when DOM is ready
+$(document).ready(function() {
+    initializePickers();
+});
+
+// Also call it when new content is loaded (for dynamic content)
+$(document).on('shown.bs.modal', function() {
+    initializePickers();
+});
 
 // Initialize everything when document is ready
 $(document).ready(function() {
