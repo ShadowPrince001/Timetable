@@ -524,9 +524,6 @@ def faculty_dashboard():
         return redirect(url_for('dashboard'))
     
     try:
-        # Import calendar utilities
-        from calendar_utils import get_faculty_today_classes, get_upcoming_classes, get_active_academic_year
-        
         # Get faculty's courses and timetables with optimized queries
         course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
         course_ids = [assignment.course_id for assignment in course_assignments]
@@ -539,14 +536,63 @@ def faculty_dashboard():
             db.joinedload(Timetable.time_slot)
         ).filter_by(teacher_id=current_user.id).all()
         
-        # Get today's classes using calendar-based system
-        today_classes = get_faculty_today_classes(current_user.id)
+        # Get today's classes using direct database queries
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        today_weekday = today.strftime('%A')  # Monday, Tuesday, etc.
+        
+        # Get today's classes based on time slots
+        today_classes = []
+        for timetable in timetables:
+            if timetable.time_slot and timetable.time_slot.day == today_weekday:
+                today_classes.append({
+                    'id': timetable.id,
+                    'course_name': timetable.course.name if timetable.course else 'Unknown Course',
+                    'course_code': timetable.course.code if timetable.course else 'N/A',
+                    'start_time': timetable.time_slot.start_time if timetable.time_slot else 'N/A',
+                    'end_time': timetable.time_slot.end_time if timetable.time_slot else 'N/A',
+                    'classroom': timetable.classroom.room_number if timetable.classroom else 'TBD',
+                    'time_slot_id': timetable.time_slot_id,
+                    'course_id': timetable.course_id
+                })
         
         # Get upcoming classes for the next 7 days
-        upcoming_classes = get_upcoming_classes(7)
+        upcoming_classes = []
+        for i in range(7):
+            future_date = today + timedelta(days=i)
+            future_weekday = future_date.strftime('%A')
+            
+            for timetable in timetables:
+                if timetable.time_slot and timetable.time_slot.day == future_weekday:
+                    upcoming_classes.append({
+                        'date': future_date,
+                        'day_name': future_weekday,
+                        'course_name': timetable.course.name if timetable.course else 'Unknown Course',
+                        'course_code': timetable.course.code if timetable.course else 'N/A',
+                        'start_time': timetable.time_slot.start_time if timetable.time_slot else 'N/A',
+                        'end_time': timetable.time_slot.end_time if timetable.time_slot else 'N/A',
+                        'classroom': timetable.classroom.room_number if timetable.classroom else 'TBD',
+                        'time_slot_id': timetable.time_slot_id,
+                        'course_id': timetable.course_id
+                    })
         
-        # Get active academic year
-        active_year = get_active_academic_year()
+        # Sort today's classes by start time
+        today_classes.sort(key=lambda x: x['start_time'] if x['start_time'] != 'N/A' else '23:59')
+        
+        # Sort upcoming classes by date and time
+        upcoming_classes.sort(key=lambda x: (x['date'], x['start_time'] if x['start_time'] != 'N/A' else '23:59'))
+        
+        # Remove duplicates from upcoming classes (same course on same day)
+        seen = set()
+        unique_upcoming = []
+        for cls in upcoming_classes:
+            key = (cls['date'], cls['course_id'])
+            if key not in seen:
+                seen.add(key)
+                unique_upcoming.append(cls)
+        upcoming_classes = unique_upcoming
+        
+        active_year = None
                 
     except Exception as e:
         flash(f'Error loading dashboard data: {str(e)}', 'error')
@@ -572,9 +618,6 @@ def student_dashboard():
         return redirect(url_for('dashboard'))
     
     try:
-        # Import calendar utilities
-        from calendar_utils import get_student_today_classes, get_upcoming_classes, get_active_academic_year
-        
         # Get student's attendance records with proper joins
         attendance_records = db.session.query(Attendance).options(
             db.joinedload(Attendance.course),
@@ -588,14 +631,74 @@ def student_dashboard():
         late_classes = Attendance.query.filter_by(student_id=current_user.id, status='late').count()
         attendance_percentage = (present_classes / total_classes * 100) if total_classes > 0 else 0
         
-        # Get today's classes using calendar-based system
-        today_classes = get_student_today_classes(current_user.id)
+        # Get today's classes using direct database queries
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        today_weekday = today.strftime('%A')  # Monday, Tuesday, etc.
+        
+        # Get student's group
+        student_group_id = current_user.group_id
+        
+        # Get today's classes based on student's group and time slots
+        today_classes = []
+        if student_group_id:
+            student_timetables = db.session.query(Timetable).options(
+                db.joinedload(Timetable.course),
+                db.joinedload(Timetable.classroom),
+                db.joinedload(Timetable.time_slot)
+            ).filter_by(student_group_id=student_group_id).all()
+            
+            for timetable in student_timetables:
+                if timetable.time_slot and timetable.time_slot.day == today_weekday:
+                    today_classes.append({
+                        'id': timetable.id,
+                        'course_name': timetable.course.name if timetable.course else 'Unknown Course',
+                        'course_code': timetable.course.code if timetable.course else 'N/A',
+                        'start_time': timetable.time_slot.start_time if timetable.time_slot else 'N/A',
+                        'end_time': timetable.time_slot.end_time if timetable.time_slot else 'N/A',
+                        'classroom': timetable.classroom.room_number if timetable.classroom else 'TBD',
+                        'time_slot_id': timetable.time_slot_id,
+                        'course_id': timetable.course_id
+                    })
         
         # Get upcoming classes for the next 7 days
-        upcoming_classes = get_upcoming_classes(7)
+        upcoming_classes = []
+        if student_group_id:
+            for i in range(7):
+                future_date = today + timedelta(days=i)
+                future_weekday = future_date.strftime('%A')
+                
+                for timetable in student_timetables:
+                    if timetable.time_slot and timetable.time_slot.day == future_weekday:
+                        upcoming_classes.append({
+                            'date': future_date,
+                            'day_name': future_weekday,
+                            'course_name': timetable.course.name if timetable.course else 'Unknown Course',
+                            'course_code': timetable.course.code if timetable.course else 'N/A',
+                            'start_time': timetable.time_slot.start_time if timetable.time_slot else 'N/A',
+                            'end_time': timetable.time_slot.end_time if timetable.time_slot else 'N/A',
+                            'classroom': timetable.classroom.room_number if timetable.classroom else 'TBD',
+                            'time_slot_id': timetable.time_slot_id,
+                            'course_id': timetable.course_id
+                        })
         
-        # Get active academic year
-        active_year = get_active_academic_year()
+        # Sort today's classes by start time
+        today_classes.sort(key=lambda x: x['start_time'] if x['start_time'] != 'N/A' else '23:59')
+        
+        # Sort upcoming classes by date and time
+        upcoming_classes.sort(key=lambda x: (x['date'], x['start_time'] if x['start_time'] != 'N/A' else '23:59'))
+        
+        # Remove duplicates from upcoming classes (same course on same day)
+        seen = set()
+        unique_upcoming = []
+        for cls in upcoming_classes:
+            key = (cls['date'], cls['course_id'])
+            if key not in seen:
+                seen.add(key)
+                unique_upcoming.append(cls)
+        upcoming_classes = unique_upcoming
+        
+        active_year = None
                 
     except Exception as e:
         flash(f'Error loading dashboard data: {str(e)}', 'error')

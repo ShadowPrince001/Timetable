@@ -6,14 +6,18 @@ Provides utility functions for calendar-based operations in the timetable system
 
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Optional, Tuple
-from app import db, AcademicYear, AcademicSession, Holiday, ClassInstance, Timetable
+# Import models and db from current_app to avoid circular imports
+from flask import current_app
+from flask_sqlalchemy import SQLAlchemy
 
-def get_active_academic_year() -> Optional[AcademicYear]:
+def get_active_academic_year() -> Optional['AcademicYear']:
     """Get the currently active academic year"""
+    from app import AcademicYear
     return AcademicYear.query.filter_by(is_active=True).first()
 
-def get_academic_session_for_date(target_date: date) -> Optional[AcademicSession]:
+def get_academic_session_for_date(target_date: date) -> Optional['AcademicSession']:
     """Get the academic session for a specific date"""
+    from app import AcademicSession
     active_year = get_active_academic_year()
     if not active_year:
         return None
@@ -26,6 +30,7 @@ def get_academic_session_for_date(target_date: date) -> Optional[AcademicSession
 
 def is_holiday(target_date: date) -> bool:
     """Check if a specific date is a holiday"""
+    from app import Holiday
     active_year = get_active_academic_year()
     if not active_year:
         return False
@@ -38,8 +43,9 @@ def is_holiday(target_date: date) -> bool:
     
     return holiday is not None
 
-def get_holiday_for_date(target_date: date) -> Optional[Holiday]:
+def get_holiday_for_date(target_date: date) -> Optional['Holiday']:
     """Get the holiday for a specific date if it exists"""
+    from app import Holiday
     active_year = get_active_academic_year()
     if not active_year:
         return None
@@ -58,16 +64,19 @@ def is_valid_class_date(target_date: date) -> bool:
     """Check if a date is valid for classes (not weekend or holiday)"""
     return not is_weekend(target_date) and not is_holiday(target_date)
 
-def get_class_instances_for_date(target_date: date) -> List[ClassInstance]:
+def get_class_instances_for_date(target_date: date) -> List['ClassInstance']:
     """Get all class instances for a specific date"""
+    from app import ClassInstance
     return ClassInstance.query.filter_by(class_date=target_date).all()
 
-def get_timetables_for_session(session_id: int) -> List[Timetable]:
+def get_timetables_for_session(session_id: int) -> List['Timetable']:
     """Get all timetables for a specific academic session"""
+    from app import Timetable
     return Timetable.query.filter_by(session_id=session_id).all()
 
 def generate_class_instances_for_timetable(timetable_id: int, start_date: date, end_date: date) -> int:
     """Generate class instances for a specific timetable within a date range"""
+    from app import Timetable, ClassInstance, db
     timetable = Timetable.query.get(timetable_id)
     if not timetable:
         return 0
@@ -119,6 +128,7 @@ def generate_class_instances_for_timetable(timetable_id: int, start_date: date, 
 
 def get_date_range_for_session(session_id: int) -> Tuple[date, date]:
     """Get the start and end dates for a specific session"""
+    from app import AcademicSession
     session = AcademicSession.query.get(session_id)
     if not session:
         return None, None
