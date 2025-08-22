@@ -3840,12 +3840,28 @@ def scan_qr_code():
     
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data received'})
+        
         qr_hash = data.get('qr_hash')
         course_id = data.get('course_id')
         time_slot_id = data.get('time_slot_id')
         
+        print(f"Debug: Received data - qr_hash: {qr_hash}, course_id: {course_id}, time_slot_id: {time_slot_id}")
+        
         if not all([qr_hash, course_id, time_slot_id]):
-            return jsonify({'success': False, 'error': 'Missing required data'})
+            missing = []
+            if not qr_hash: missing.append('qr_hash')
+            if not course_id: missing.append('course_id')
+            if not time_slot_id: missing.append('time_slot_id')
+            return jsonify({'success': False, 'error': f'Missing required data: {", ".join(missing)}'})
+        
+        # Convert IDs to integers
+        try:
+            course_id = int(course_id)
+            time_slot_id = int(time_slot_id)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid course_id or time_slot_id format'})
         
         # Verify QR code
         qr_code = QRCode.query.filter_by(
@@ -3867,7 +3883,14 @@ def scan_qr_code():
         # Get course information for response
         course = Course.query.get(course_id)
         if not course:
-            return jsonify({'success': False, 'error': 'Course not found'})
+            return jsonify({'success': False, 'error': f'Course with ID {course_id} not found'})
+        
+        # Get time slot information
+        time_slot = TimeSlot.query.get(time_slot_id)
+        if not time_slot:
+            return jsonify({'success': False, 'error': f'Time slot with ID {time_slot_id} not found'})
+        
+        print(f"Debug: Processing attendance for student {student.name} in course {course.name} at {time_slot.day} {time_slot.start_time}")
         
         # Check if attendance already marked
         existing_attendance = Attendance.query.filter_by(
@@ -3897,6 +3920,8 @@ def scan_qr_code():
         qr_code.is_active = False
         db.session.commit()
         
+        print(f"Debug: Successfully marked attendance for {student.name}")
+        
         return jsonify({
             'success': True,
             'message': f'Attendance marked for {student.name}',
@@ -3905,7 +3930,10 @@ def scan_qr_code():
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"Error in scan_qr_code: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 @app.route('/faculty/attendance_scanner')
 @login_required
@@ -3915,29 +3943,44 @@ def attendance_scanner():
         flash('Access denied. Faculty privileges required.', 'error')
         return redirect(url_for('faculty_dashboard'))
     
-    # Get current date for display
-    today = date.today().strftime('%A, %B %d, %Y')
-    
-    # Get faculty's courses for selection
-    course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
-    course_ids = [assignment.course_id for assignment in course_assignments]
-    courses = Course.query.filter(Course.id.in_(course_ids)).all() if course_ids else []
-    
-    # If no courses assigned, show all courses as fallback
-    if not courses:
-        courses = Course.query.all()
-    
-    # Get time slots
-    time_slots = TimeSlot.query.all()
-    
-    print(f"Debug: Faculty {current_user.id} has {len(course_assignments)} course assignments")
-    print(f"Debug: Found {len(courses)} courses for dropdown")
-    print(f"Debug: Found {len(time_slots)} time slots for dropdown")
-    
-    return render_template('faculty/attendance_scanner.html', 
-                         today=today, 
-                         courses=courses, 
-                         time_slots=time_slots)
+    try:
+        # Get current date for display
+        today = date.today().strftime('%A, %B %d, %Y')
+        
+        # Get faculty's courses for selection
+        course_assignments = CourseTeacher.query.filter_by(teacher_id=current_user.id).all()
+        course_ids = [assignment.course_id for assignment in course_assignments]
+        courses = Course.query.filter(Course.id.in_(course_ids)).all() if course_ids else []
+        
+        # If no courses assigned, show all courses as fallback
+        if not courses:
+            courses = Course.query.all()
+            print(f"Warning: No courses assigned to faculty {current_user.id}, showing all courses as fallback")
+        
+        # Get time slots
+        time_slots = TimeSlot.query.all()
+        
+        print(f"Debug: Faculty {current_user.id} has {len(course_assignments)} course assignments")
+        print(f"Debug: Found {len(courses)} courses for dropdown")
+        print(f"Debug: Found {len(time_slots)} time slots for dropdown")
+        
+        # Debug: Print course details
+        for course in courses:
+            print(f"Debug: Course {course.id}: {course.code} - {course.name}")
+        
+        # Debug: Print time slot details
+        for slot in time_slots:
+            print(f"Debug: Time Slot {slot.id}: {slot.day} {slot.start_time}-{slot.end_time}")
+        
+        return render_template('faculty/attendance_scanner.html', 
+                             today=today, 
+                             courses=courses, 
+                             time_slots=time_slots)
+                             
+    except Exception as e:
+        print(f"Error in attendance_scanner route: {str(e)}")
+        flash(f'Error loading attendance scanner: {str(e)}', 'error')
+        return redirect(url_for('faculty_dashboard'))
 
 @app.route('/student/my_qr_code')
 @login_required

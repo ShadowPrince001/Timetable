@@ -194,6 +194,12 @@
                     <button class="btn btn-outline-warning" onclick="checkLibraryManually()">
                         <i class="fas fa-sync"></i> Check Library
                     </button>
+                    <button class="btn btn-outline-info" onclick="checkCurrentState()">
+                        <i class="fas fa-bug"></i> Debug State
+                    </button>
+                    <button class="btn btn-outline-success" onclick="testAttendanceMarking()">
+                        <i class="fas fa-test-tube"></i> Test Attendance
+                    </button>
                 </div>
                 <div class="text-center mt-2">
                     <small class="text-muted">
@@ -279,11 +285,74 @@ function updateSessionInfo() {
     return true;
 }
 
+// Check current state of dropdowns and display debug info
+function checkCurrentState() {
+    console.log('=== Checking Current State ===');
+    
+    const courseSelect = document.getElementById('course-select');
+    const timeSlotSelect = document.getElementById('timeslot-select');
+    
+    if (courseSelect) {
+        console.log('Course dropdown found');
+        console.log('Course dropdown value:', courseSelect.value);
+        console.log('Course dropdown options count:', courseSelect.options.length);
+        for (let i = 0; i < courseSelect.options.length; i++) {
+            console.log(`Course option ${i}: value="${courseSelect.options[i].value}", text="${courseSelect.options[i].text}"`);
+        }
+    } else {
+        console.error('Course dropdown NOT found');
+    }
+    
+    if (timeSlotSelect) {
+        console.log('Time slot dropdown found');
+        console.log('Time slot dropdown value:', timeSlotSelect.value);
+        console.log('Time slot dropdown options count:', timeSlotSelect.options.length);
+        for (let i = 0; i < timeSlotSelect.options.length; i++) {
+            console.log(`Time slot option ${i}: value="${timeSlotSelect.options[i].value}", text="${timeSlotSelect.options[i].text}"`);
+        }
+    } else {
+        console.error('Time slot dropdown NOT found');
+    }
+    
+    console.log('Current course ID:', currentCourseId);
+    console.log('Current time slot ID:', currentTimeSlotId);
+    console.log('=== End State Check ===');
+}
+
 // Initialize course and time slot information
 function initializeSessionInfo() {
+    console.log('Initializing session info...');
+    
+    // Check if dropdowns exist and have options
+    const courseSelect = document.getElementById('course-select');
+    const timeSlotSelect = document.getElementById('timeslot-select');
+    
+    if (!courseSelect || !timeSlotSelect) {
+        console.error('Dropdown elements not found during initialization');
+        return false;
+    }
+    
+    console.log('Course dropdown options:', courseSelect.options.length);
+    console.log('Time slot dropdown options:', timeSlotSelect.options.length);
+    
+    // Check if dropdowns have values
+    if (courseSelect.options.length <= 1) {
+        console.warn('Course dropdown has no options (only default option)');
+        showStatus('Warning: No courses available. Please check if courses are assigned to you.', 'warning');
+    }
+    
+    if (timeSlotSelect.options.length <= 1) {
+        console.warn('Time slot dropdown has no options (only default option)');
+        showStatus('Warning: No time slots available. Please check if time slots are configured.', 'warning');
+    }
+    
     // No need to get URL parameters anymore - just initialize the display
     document.getElementById('course-display').textContent = 'Please select a course';
     document.getElementById('timeslot-display').textContent = 'Please select a time slot';
+    
+    // Check current state after initialization
+    setTimeout(checkCurrentState, 100);
+    
     return true;
 }
 
@@ -388,10 +457,33 @@ function onScanFailure(error) {
 }
 
 function markAttendance(qrHash) {
+    console.log('markAttendance called with qrHash:', qrHash);
+    console.log('Current state - courseId:', currentCourseId, 'timeSlotId:', currentTimeSlotId);
+    
     if (!currentCourseId || !currentTimeSlotId) {
-        showStatus('Session information not available', 'error');
+        const errorMsg = 'Session information not available. Please select both course and time slot.';
+        console.error(errorMsg);
+        showStatus(errorMsg, 'error');
+        
+        // Show detailed error info
+        if (!currentCourseId) showStatus('Course not selected', 'error');
+        if (!currentTimeSlotId) showStatus('Time slot not selected', 'error');
+        
         return;
     }
+    
+    if (!qrHash || qrHash.trim() === '') {
+        const errorMsg = 'Invalid QR code hash received';
+        console.error(errorMsg);
+        showStatus(errorMsg, 'error');
+        return;
+    }
+    
+    console.log('Sending attendance request with data:', {
+        qr_hash: qrHash,
+        course_id: currentCourseId,
+        time_slot_id: currentTimeSlotId
+    });
     
     fetch('/scan_qr_code', {
         method: 'POST',
@@ -404,17 +496,26 @@ function markAttendance(qrHash) {
             time_slot_id: currentTimeSlotId
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         if (data.success) {
             showStatus(data.message, 'success');
             addToRecentAttendance(data.student_name, data.course_name);
         } else {
-            showStatus(data.error, 'error');
+            const errorMsg = data.error || 'Unknown error occurred';
+            console.error('Server returned error:', errorMsg);
+            showStatus(errorMsg, 'error');
         }
     })
     .catch(error => {
-        showStatus('Error marking attendance: ' + error, 'error');
+        console.error('Fetch error:', error);
+        const errorMsg = 'Error marking attendance: ' + error.message;
+        showStatus(errorMsg, 'error');
     });
 }
 
@@ -483,15 +584,36 @@ function toggleManualEntry() {
 }
 
 function manualMarkAttendance() {
-    const qrHash = document.getElementById('manual-qr-input').value.trim();
+    const qrInput = document.getElementById('manual-qr-input');
+    const qrHash = qrInput.value.trim();
+    
     if (!qrHash) {
         showStatus('Please enter a QR code hash', 'error');
         return;
     }
     
+    console.log('Manual attendance marking with hash:', qrHash);
     markAttendance(qrHash);
-    document.getElementById('manual-qr-input').value = '';
-    document.getElementById('manual-entry').style.display = 'none';
+    
+    // Clear input after marking
+    qrInput.value = '';
+}
+
+// Test function to simulate QR code scanning
+function testAttendanceMarking() {
+    console.log('Testing attendance marking...');
+    
+    if (!currentCourseId || !currentTimeSlotId) {
+        showStatus('Please select course and time slot first', 'error');
+        return;
+    }
+    
+    // Generate a test QR hash
+    const testHash = 'test-qr-' + Date.now();
+    console.log('Using test hash:', testHash);
+    
+    showStatus('Testing with sample QR code...', 'info');
+    markAttendance(testHash);
 }
 
 function testScanner() {
