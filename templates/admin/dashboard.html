@@ -226,6 +226,12 @@
                             <i class="fas fa-file-csv me-2"></i>Export Courses CSV
                         </a>
                     </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_reset_qr_sequence') }}" class="btn btn-outline-danger w-100" 
+                           onclick="return confirm('This will reset the QR code sequence. Continue?')">
+                            <i class="fas fa-sync-alt me-2"></i>Reset QR Sequence
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

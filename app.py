@@ -3732,13 +3732,38 @@ def generate_qr_code():
         if existing_qr:
             existing_qr.is_active = False
         
-        new_qr = QRCode(
-            user_id=current_user.id,
-            qr_code_hash=qr_hash,
-            expires_at=expires_at
-        )
-        db.session.add(new_qr)
-        db.session.commit()
+        # Try to create new QR code with retry logic for sequence issues
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                new_qr = QRCode(
+                    user_id=current_user.id,
+                    qr_code_hash=qr_hash,
+                    expires_at=expires_at
+                )
+                db.session.add(new_qr)
+                db.session.commit()
+                break  # Success, exit retry loop
+            except Exception as e:
+                if "duplicate key value violates unique constraint" in str(e) and "qr_code_pkey" in str(e):
+                    # Sequence issue - try to reset it
+                    if attempt == 0:  # Only try to reset sequence on first attempt
+                        try:
+                            reset_qr_code_sequence()
+                        except Exception as reset_error:
+                            print(f"Failed to reset sequence: {reset_error}")
+                    
+                    if attempt < max_retries - 1:
+                        db.session.rollback()
+                        # Generate a new hash and try again
+                        qr_hash = str(uuid.uuid4())
+                        continue
+                    else:
+                        # Last attempt failed
+                        raise e
+                else:
+                    # Different error, re-raise
+                    raise e
         
         # Generate QR code image
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -3763,6 +3788,48 @@ def generate_qr_code():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+def reset_qr_code_sequence():
+    """Reset the PostgreSQL sequence for qr_code table to fix sequence issues"""
+    try:
+        # Check if we're using PostgreSQL
+        if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
+            # Get the current maximum ID from qr_code table
+            result = db.session.execute(db.text("SELECT COALESCE(MAX(id), 0) FROM qr_code"))
+            max_id = result.scalar()
+            
+            if max_id is not None:
+                # Reset the sequence to start from max_id + 1
+                db.session.execute(db.text(f"SELECT setval('qr_code_id_seq', {max_id + 1}, false)"))
+                db.session.commit()
+                print(f"Reset qr_code sequence to {max_id + 1}")
+                return True
+        else:
+            # For SQLite, this function is not needed
+            print("SQLite database detected - sequence reset not needed")
+            return True
+    except Exception as e:
+        print(f"Error resetting sequence: {e}")
+        # Don't raise the error, just log it
+        return False
+
+@app.route('/admin/reset_qr_sequence')
+@login_required
+def admin_reset_qr_sequence():
+    """Admin route to manually reset QR code sequence"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        if reset_qr_code_sequence():
+            flash('QR code sequence reset successfully', 'success')
+        else:
+            flash('Failed to reset QR code sequence', 'error')
+    except Exception as e:
+        flash(f'Error resetting sequence: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/scan_qr_code', methods=['POST'])
 @login_required
