@@ -96,6 +96,93 @@
         color: #856404;
         border: 1px solid #ffeaa7;
     }
+    
+    /* Scan feedback styles */
+    .scan-feedback {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        z-index: 1000;
+        animation: feedbackFadeIn 0.3s ease-in;
+    }
+    
+    .scan-feedback-success {
+        background: rgba(40, 167, 69, 0.9);
+        border: 2px solid #28a745;
+    }
+    
+    .scan-feedback-duplicate {
+        background: rgba(255, 193, 7, 0.9);
+        border: 2px solid #ffc107;
+    }
+    
+    .feedback-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .feedback-content i {
+        font-size: 2rem;
+    }
+    
+    .feedback-content span {
+        font-size: 1.2rem;
+        font-weight: bold;
+    }
+    
+    .feedback-content small {
+        font-size: 0.9rem;
+        opacity: 0.8;
+    }
+    
+    @keyframes feedbackFadeIn {
+        from {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+        to {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+    }
+    
+    /* Scanner status indicator */
+    .scanner-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        font-size: 0.9rem;
+    }
+    
+    .scanner-status.scanning {
+        background: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+    }
+    
+    .scanner-status.scanning i {
+        color: #28a745;
+        animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    
     .course-info {
         background: #e3f2fd;
         border: 1px solid #2196f3;
@@ -219,9 +306,15 @@
                      <button class="btn btn-outline-warning" onclick="simulateQRScan()">
                          <i class="fas fa-qrcode"></i> Simulate Scan
                      </button>
-                     <button class="btn btn-outline-info" onclick="checkSystemStatus()">
-                         <i class="fas fa-info-circle"></i> System Status
-                     </button>
+                                         <button class="btn btn-outline-info" onclick="checkSystemStatus()">
+                        <i class="fas fa-info-circle"></i> System Status
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="resetDuplicateTracking()">
+                        <i class="fas fa-refresh"></i> Reset Duplicates
+                    </button>
+                    <button class="btn btn-outline-info" onclick="showScanningStats()">
+                        <i class="fas fa-chart-bar"></i> Scan Stats
+                    </button>
                 </div>
                 <div class="text-center mt-2">
                     <small class="text-muted">
@@ -229,11 +322,26 @@
                         Manual entry is only needed if the scanner doesn't work or you need to enter a QR code hash manually
                     </small>
                 </div>
+                
+                <div class="text-center mt-2">
+                    <small class="text-success">
+                        <i class="fas fa-sync"></i> 
+                        <strong>Continuous Scanning:</strong> Scanner will keep running after each scan until you press Stop
+                    </small>
+                </div>
                 <div class="text-center mt-2">
                     <small class="text-info">
                         <i class="fas fa-exclamation-triangle"></i> 
                         If course/time slot are not auto-filled, please select them manually from the dropdowns above
                     </small>
+                </div>
+                
+                <!-- Scanner Status Indicator -->
+                <div class="text-center mt-3">
+                    <div id="scanner-status" class="scanner-status">
+                        <i class="fas fa-stop-circle text-muted"></i>
+                        <span class="text-muted">Scanner: Stopped</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -262,6 +370,8 @@ let html5QrcodeScanner = null;
 let recentAttendance = [];
 let currentCourseId = null;
 let currentTimeSlotId = null;
+let scannedQRCodes = new Set(); // Track scanned QR codes to prevent duplicates
+let isScanning = false; // Track if scanner is actively running
 
 // Get URL parameters
 function getUrlParameter(name) {
@@ -372,10 +482,13 @@ function initializeSessionInfo() {
     document.getElementById('course-display').textContent = 'Please select a course';
     document.getElementById('timeslot-display').textContent = 'Please select a time slot';
     
+    // Initialize scanner status
+    updateScannerStatus();
+    
     // Check current state after initialization
     setTimeout(checkCurrentState, 100);
     
-    return true;
+    return true
 }
 
 function startScanner() {
@@ -448,6 +561,10 @@ function startScanner() {
                  showStatus('Scanner started successfully!', 'success');
          console.log('Scanner rendered successfully');
          
+         // Set scanning state
+         isScanning = true;
+         updateScannerStatus();
+         
          // Add a visual indicator that scanner is active
          scannerContainer.style.border = '3px solid #28a745';
          scannerContainer.style.boxShadow = '0 0 10px rgba(40, 167, 69, 0.5)';
@@ -455,7 +572,7 @@ function startScanner() {
          // Add a small delay to ensure scanner is fully initialized
          setTimeout(() => {
              console.log('Scanner initialization delay completed');
-             showStatus('Scanner is ready to scan!', 'success');
+             showStatus('Scanner is ready to scan! Keep scanning until you press Stop.', 'success');
              
              // Check if scanner is still active
              if (html5QrcodeScanner) {
@@ -481,6 +598,10 @@ function stopScanner() {
             html5QrcodeScanner.clear();
             html5QrcodeScanner = null;
             
+            // Reset scanning state
+            isScanning = false;
+            updateScannerStatus();
+            
             // Reset visual indicators
             const scannerContainer = document.getElementById('qr-reader');
             if (scannerContainer) {
@@ -504,16 +625,146 @@ function onScanSuccess(decodedText, decodedResult) {
     console.log('QR Code scanned successfully:', decodedText);
     console.log('Scan result:', decodedResult);
     
-    // Stop scanner after successful scan
-    stopScanner();
+    // Play success sound
+    playSound('success');
     
-    // Mark attendance
+    // Show visual feedback
+    showScanFeedback('success', decodedText);
+    
+    // Mark attendance (but don't stop scanner)
     markQRAttendance(decodedText);
+    
+    // Scanner continues automatically - no need to stop
 }
 
 function onScanFailure(error) {
     // Handle scan failure silently
     console.log('Scan failure (this is normal):', error);
+    
+    // Scanner continues automatically - no need to stop
+}
+
+// Function to play sounds for different events
+function playSound(type) {
+    try {
+        // Create audio context for sound generation
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        if (type === 'success') {
+            // Success sound - ascending beep
+            playBeep(audioContext, 800, 0.1, 'sine');
+            setTimeout(() => playBeep(audioContext, 1000, 0.1, 'sine'), 100);
+        } else if (type === 'error') {
+            // Error sound - descending beep
+            playBeep(audioContext, 600, 0.15, 'sawtooth');
+            setTimeout(() => playBeep(audioContext, 400, 0.15, 'sawtooth'), 100);
+        } else if (type === 'duplicate') {
+            // Duplicate sound - two short beeps
+            playBeep(audioContext, 500, 0.1, 'square');
+            setTimeout(() => playBeep(audioContext, 500, 0.1, 'square'), 200);
+        }
+    } catch (error) {
+        console.log('Sound playback not supported:', error);
+    }
+}
+
+// Helper function to generate beep sounds
+function playBeep(audioContext, frequency, duration, type) {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = type;
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration);
+}
+
+// Function to show visual feedback for scans
+function showScanFeedback(type, qrHash) {
+    const scannerContainer = document.getElementById('qr-reader');
+    if (!scannerContainer) return;
+    
+    // Create feedback element
+    const feedback = document.createElement('div');
+    feedback.className = `scan-feedback scan-feedback-${type}`;
+    feedback.innerHTML = `
+        <div class="feedback-content">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i>
+            <span>${type === 'success' ? 'QR Code Scanned!' : 'Duplicate QR Code'}</span>
+            <small>${qrHash.substring(0, 20)}...</small>
+        </div>
+    `;
+    
+    // Add to scanner container
+    scannerContainer.appendChild(feedback);
+    
+    // Remove after 2 seconds
+    setTimeout(() => {
+        if (feedback.parentNode) {
+            feedback.parentNode.removeChild(feedback);
+        }
+    }, 2000);
+}
+
+// Function to check if QR code is duplicate
+function isDuplicateQR(qrHash) {
+    if (scannedQRCodes.has(qrHash)) {
+        return true;
+    }
+    
+    // Add to scanned set
+    scannedQRCodes.add(qrHash);
+    
+    // Keep only last 100 scanned codes to prevent memory issues
+    if (scannedQRCodes.size > 100) {
+        const firstItem = scannedQRCodes.values().next().value;
+        scannedQRCodes.delete(firstItem);
+    }
+    
+    return false;
+}
+
+// Function to reset duplicate tracking
+function resetDuplicateTracking() {
+    scannedQRCodes.clear();
+    showStatus('Duplicate tracking reset', 'info');
+}
+
+// Function to update scanner status display
+function updateScannerStatus() {
+    const statusElement = document.getElementById('scanner-status');
+    if (!statusElement) return;
+    
+    if (isScanning) {
+        statusElement.className = 'scanner-status scanning';
+        statusElement.innerHTML = '<i class="fas fa-play-circle"></i><span>Scanner: Active - Keep Scanning</span>';
+    } else {
+        statusElement.className = 'scanner-status';
+        statusElement.innerHTML = '<i class="fas fa-stop-circle"></i><span>Scanner: Stopped</span>';
+    }
+}
+
+// Function to show scanning statistics
+function showScanningStats() {
+    const stats = {
+        totalScanned: scannedQRCodes.size,
+        recentAttendance: recentAttendance.length,
+        isScanning: isScanning
+    };
+    
+    const message = `📊 Scanning Statistics:
+• Total QR Codes Scanned: ${stats.totalScanned}
+• Recent Attendance Records: ${stats.recentAttendance}
+• Scanner Status: ${stats.isScanning ? 'Active' : 'Stopped'}`;
+    
+    showStatus(message, 'info');
 }
 
 // Function to clear error messages
@@ -540,7 +791,6 @@ function markQRAttendance(qrHash) {
         // Show detailed error info
         if (!currentCourseId) showStatus('Course not selected', 'error');
         if (!currentTimeSlotId) showStatus('Time slot not selected', 'error');
-        
         return;
     }
     
@@ -548,6 +798,15 @@ function markQRAttendance(qrHash) {
         const errorMsg = 'Invalid QR code hash received';
         console.error(errorMsg);
         showStatus(errorMsg, 'error');
+        return;
+    }
+    
+    // Check for duplicate QR code
+    if (isDuplicateQR(qrHash)) {
+        console.log('Duplicate QR code detected:', qrHash);
+        playSound('duplicate');
+        showScanFeedback('duplicate', qrHash);
+        showStatus('Duplicate QR code detected. Attendance already marked for this code.', 'warning');
         return;
     }
     
@@ -609,10 +868,26 @@ function markQRAttendance(qrHash) {
             
             // Clear any previous error messages
             clearErrorMessages();
+            
+            // Show success feedback
+            showScanFeedback('success', qrHash);
+            
+            // Play success sound
+            playSound('success');
+            
+            // Show scanner continues message
+            setTimeout(() => {
+                if (isScanning) {
+                    showStatus('Scanner continues... Ready for next QR code!', 'info');
+                }
+            }, 2000);
         } else {
             const errorMsg = data.error || 'Unknown error occurred';
             console.error('Server returned error:', errorMsg);
             showStatus(errorMsg, 'error');
+            
+            // Play error sound
+            playSound('error');
             
             // Don't retry on server errors to prevent loops
             if (errorMsg.includes('already marked') || errorMsg.includes('not found')) {
