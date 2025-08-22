@@ -72,7 +72,7 @@
             
             <div class="refresh-button">
                 <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> Your QR code is fixed for today and cannot be regenerated
+                    <i class="fas fa-info-circle"></i> Your QR code is valid for 24 hours and will automatically refresh
                 </div>
             </div>
         </div>
@@ -111,12 +111,14 @@
                     <li>Present this QR code to your faculty during class</li>
                     <li>Faculty will scan it using their attendance scanner</li>
                     <li>Your attendance will be automatically marked</li>
-                    <li>QR codes are fixed for the entire day and expire at midnight</li>
+                    <li>QR codes are valid for 24 hours and automatically refresh</li>
                     <li>Each QR code can only be used once per class session</li>
+                    <li>Late entry (15+ minutes after class start) will be marked as "Late"</li>
+                    <li>QR codes won't work before class starts or after class ends</li>
                 </ol>
                 
                 <div class="alert alert-info mt-3">
-                    <strong>Note:</strong> Your QR code is unique for today and cannot be regenerated. It will automatically refresh tomorrow.
+                    <strong>Note:</strong> Your QR code is unique and valid for 24 hours. It will automatically refresh when it expires.
                 </div>
             </div>
         </div>
@@ -128,9 +130,9 @@ let qrData = null;
 let expiryTimer = null;
 
 function generateNewQR() {
-    // This function is now deprecated since QR codes are fixed per day
+    // This function is now deprecated since QR codes auto-refresh
     // QR codes are automatically generated/retrieved on page load
-    showError('QR codes are fixed for today and cannot be regenerated');
+    showError('QR codes automatically refresh when they expire (24 hours)');
 }
 
 function displayQRCode(data) {
@@ -161,18 +163,37 @@ function startExpiryTimer(expiryTime) {
         const timeLeft = expiry - now;
         
         if (timeLeft <= 0) {
+            // QR code expired, generate new one
             clearInterval(expiryTimer);
             updateStatus(false);
             document.getElementById('expiry-timer').textContent = 'Expired';
-            return;
+            
+            // Auto-refresh QR code after 5 seconds
+            setTimeout(() => {
+                console.log('QR code expired, auto-refreshing...');
+                fetch('/generate_qr_code')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            displayQRCode(data);
+                            startExpiryTimer(data.expires_at);
+                            showSuccess('QR code automatically refreshed!');
+                        } else {
+                            showError('Error refreshing QR code: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        showError('Error refreshing QR code: ' + error);
+                    });
+            }, 5000);
+        } else {
+            const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+            const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+            
+            document.getElementById('expiry-timer').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
-        
-        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-        
-        document.getElementById('expiry-timer').textContent = 
-            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     }, 1000);
 }
 
@@ -196,6 +217,23 @@ function showError(message) {
             <i class="fas fa-exclamation-triangle"></i> ${message}
         </div>
     `;
+}
+
+function showSuccess(message) {
+    const container = document.getElementById('qr-code-container');
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success';
+    successDiv.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
+    
+    // Insert success message before the QR code
+    container.insertBefore(successDiv, container.firstChild);
+    
+    // Remove success message after 3 seconds
+    setTimeout(() => {
+        if (successDiv.parentNode) {
+            successDiv.remove();
+        }
+    }, 3000);
 }
 
 // Generate/Retrieve QR code when page loads

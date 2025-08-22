@@ -167,6 +167,43 @@
     </div>
 </div>
 
+<!-- Attendance Management Tools -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-tools me-2"></i>Attendance Management Tools
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="d-grid">
+                            <button id="markAbsentBtn" class="btn btn-warning btn-lg">
+                                <i class="fas fa-user-times me-2"></i>
+                                Mark Absent Students Automatically
+                            </button>
+                            <small class="text-muted mt-2">
+                                This will mark all students as absent for classes that have ended today and haven't scanned their QR codes.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle me-2"></i>Automatic Absent Marking</h6>
+                            <p class="mb-0">
+                                The system automatically marks students as absent 5 minutes after each class ends if they haven't scanned their QR codes.
+                                You can also trigger this process manually using the button above.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Quick Stats -->
 <div class="row">
     <div class="col-lg-4">
@@ -261,4 +298,66 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const markAbsentBtn = document.getElementById('markAbsentBtn');
+    
+    if (markAbsentBtn) {
+        markAbsentBtn.addEventListener('click', function() {
+            // Disable button and show loading state
+            markAbsentBtn.disabled = true;
+            markAbsentBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+            
+            // Make API call to mark absent students
+            fetch('/faculty/mark_absent_manually', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success message
+                    showAlert('success', 'Success!', data.message);
+                } else {
+                    // Show error message
+                    showAlert('danger', 'Error!', data.error || 'Failed to mark absent students');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('danger', 'Error!', 'Network error occurred while marking absent students');
+            })
+            .finally(() => {
+                // Re-enable button and restore original text
+                markAbsentBtn.disabled = false;
+                markAbsentBtn.innerHTML = '<i class="fas fa-user-times me-2"></i>Mark Absent Students Automatically';
+            });
+        });
+    }
+    
+    function showAlert(type, title, message) {
+        // Create alert element
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            <strong>${title}</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insert at the top of the page
+        const container = document.querySelector('.container-fluid');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+});
+</script>
 {% endblock %}

@@ -320,29 +320,35 @@
                     </div>
                 </div>
                 
-                <!-- Scanner Info -->
-                <div class="text-center mt-3">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <small class="text-success">
-                                <i class="fas fa-sync"></i> 
-                                <strong>Continuous Scanning</strong>
-                            </small>
-                        </div>
-                        <div class="col-md-4">
-                            <small class="text-info">
-                                <i class="fas fa-clock"></i> 
-                                <strong>Cooldown Protection</strong>
-                            </small>
-                        </div>
-                        <div class="col-md-4">
-                            <small class="text-warning">
-                                <i class="fas fa-exclamation-triangle"></i> 
-                                <strong>Select Course & Time</strong>
-                            </small>
-                        </div>
-                    </div>
-                </div>
+                                 <!-- Scanner Info -->
+                 <div class="text-center mt-3">
+                     <div class="row">
+                         <div class="col-md-3">
+                             <small class="text-success">
+                                 <i class="fas fa-sync"></i> 
+                                 <strong>Continuous Scanning</strong>
+                             </small>
+                         </div>
+                         <div class="col-md-3">
+                             <small class="text-info">
+                                 <i class="fas fa-clock"></i> 
+                                 <strong>Cooldown Protection</strong>
+                             </small>
+                         </div>
+                         <div class="col-md-3">
+                             <small class="text-warning">
+                                 <i class="fas fa-exclamation-triangle"></i> 
+                                 <strong>Time-based Attendance</strong>
+                             </small>
+                         </div>
+                         <div class="col-md-3">
+                             <small class="text-danger">
+                                 <i class="fas fa-stopwatch"></i> 
+                                 <strong>15min Grace Period</strong>
+                             </small>
+                         </div>
+                     </div>
+                 </div>
             </div>
         </div>
 
@@ -377,39 +383,6 @@
                     </button>
                     <button class="btn btn-info" onclick="toggleManualEntry()">
                         <i class="fas fa-keyboard"></i> Manual Entry
-                    </button>
-                    <button class="btn btn-warning" onclick="testScanner()">
-                        <i class="fas fa-vial"></i> Test Scanner
-                    </button>
-                    <button class="btn btn-outline-primary" onclick="testBasicJS()">
-                        <i class="fas fa-check"></i> Test JS
-                    </button>
-                    <button class="btn btn-outline-warning" onclick="checkLibraryManually()">
-                        <i class="fas fa-sync"></i> Check Library
-                    </button>
-                    <button class="btn btn-outline-info" onclick="checkCurrentState()">
-                        <i class="fas fa-bug"></i> Debug State
-                    </button>
-                                         <button class="btn btn-outline-success" onclick="testAttendanceMarking()">
-                         <i class="fas fa-test-tube"></i> Test Attendance
-                     </button>
-                     <button class="btn btn-outline-secondary" onclick="testScannerWithoutCamera()">
-                         <i class="fas fa-cog"></i> Test Scanner
-                     </button>
-                     <button class="btn btn-outline-danger" onclick="testDirectAttendance()">
-                         <i class="fas fa-bolt"></i> Direct Test
-                     </button>
-                     <button class="btn btn-outline-warning" onclick="simulateQRScan()">
-                         <i class="fas fa-qrcode"></i> Simulate Scan
-                     </button>
-                                         <button class="btn btn-outline-info" onclick="checkSystemStatus()">
-                        <i class="fas fa-info-circle"></i> System Status
-                    </button>
-                    <button class="btn btn-outline-warning" onclick="resetDuplicateTracking()">
-                        <i class="fas fa-refresh"></i> Reset Duplicates
-                    </button>
-                    <button class="btn btn-outline-info" onclick="showScanningStats()">
-                        <i class="fas fa-chart-bar"></i> Scan Stats
                     </button>
                 </div>
                 <div class="text-center mt-2">
@@ -828,10 +801,23 @@ function showScanFeedback(type, qrHash) {
     // Create feedback element
     const feedback = document.createElement('div');
     feedback.className = `scan-feedback scan-feedback-${type}`;
+    
+    let icon, message;
+    if (type === 'success') {
+        icon = 'check-circle';
+        message = 'QR Code Scanned!';
+    } else if (type === 'duplicate') {
+        icon = 'exclamation-triangle';
+        message = 'Late Entry / Duplicate';
+    } else {
+        icon = 'exclamation-triangle';
+        message = 'Error';
+    }
+    
     feedback.innerHTML = `
         <div class="feedback-content">
-            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i>
-            <span>${type === 'success' ? 'QR Code Scanned!' : 'Duplicate QR Code'}</span>
+            <i class="fas fa-${icon}"></i>
+            <span>${message}</span>
             <small>${qrHash.substring(0, 20)}...</small>
         </div>
     `;
@@ -1101,17 +1087,21 @@ function markQRAttendance(qrHash) {
         window.attendanceInProgress = false;
         
         if (data.success) {
-            showStatus(data.message, 'success');
-            addToRecentAttendance(data.student_name, data.course_name);
+            // Determine message type based on attendance status
+            const messageType = data.status === 'late' ? 'warning' : 'success';
+            showStatus(data.message, messageType);
+            addToRecentAttendance(data.student_name, data.course_name, data.status);
             
             // Clear any previous error messages
             clearErrorMessages();
             
-            // Show success feedback
-            showScanFeedback('success', qrHash);
+            // Show appropriate feedback based on status
+            const feedbackType = data.status === 'late' ? 'duplicate' : 'success'; // Use duplicate styling for late
+            showScanFeedback(feedbackType, qrHash);
             
-            // Play success sound
-            playSound('success');
+            // Play appropriate sound
+            const soundType = data.status === 'late' ? 'duplicate' : 'success';
+            playSound(soundType);
             
             // Show scanner continues message
             setTimeout(() => {
@@ -1178,12 +1168,13 @@ function showStatus(message, type) {
     }, 5000);
 }
 
-function addToRecentAttendance(studentName, courseName) {
+function addToRecentAttendance(studentName, courseName, status = 'present') {
     const attendance = {
         student: studentName,
         course: courseName,
         timeSlot: document.getElementById('timeslot-display').textContent,
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
+        status: status
     };
     
     recentAttendance.unshift(attendance);
@@ -1203,13 +1194,18 @@ function updateRecentAttendanceDisplay() {
     }
     
     let html = '<div class="table-responsive"><table class="table table-sm">';
-    html += '<thead><tr><th>Student</th><th>Course</th><th>Time</th><th>Marked At</th></tr></thead><tbody>';
+    html += '<thead><tr><th>Student</th><th>Course</th><th>Time</th><th>Status</th><th>Marked At</th></tr></thead><tbody>';
     
     recentAttendance.forEach(att => {
+        const statusBadge = att.status === 'late' ? 
+            '<span class="badge bg-warning">Late</span>' : 
+            '<span class="badge bg-success">Present</span>';
+        
         html += `<tr>
             <td>${att.student}</td>
             <td>${att.course}</td>
             <td>${att.timeSlot}</td>
+            <td>${statusBadge}</td>
             <td>${att.timestamp}</td>
         </tr>`;
     });

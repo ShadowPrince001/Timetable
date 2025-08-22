@@ -78,6 +78,13 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Start the background scheduler for automatic absent marking
+# This ensures it runs in both development and production
+try:
+    start_scheduler()
+except Exception as e:
+    print(f"Warning: Could not start scheduler: {e}")
+
 # Register database event handlers after app context is available
 with app.app_context():
     @event.listens_for(db.engine, "connect")
@@ -4048,44 +4055,42 @@ def export_csv(table_name):
 @app.route('/generate_qr_code')
 @login_required
 def generate_qr_code():
-    """Generate QR code for current user - fixed per day"""
+    """Generate QR code for current user - valid for 24 hours"""
     try:
-        # Check if user already has an active QR code for today
-        today = date.today()
+        # Check if user already has an active QR code that hasn't expired
+        now = datetime.utcnow()
         existing_qr = QRCode.query.filter_by(
             user_id=current_user.id, 
             is_active=True
         ).first()
         
-        if existing_qr:
-            # Check if the existing QR code is for today
-            if existing_qr.generated_at.date() == today:
-                # Return existing QR code for today
-                qr = qrcode.QRCode(version=1, box_size=10, border=5)
-                qr.add_data(existing_qr.qr_code_hash)
-                qr.make(fit=True)
-                
-                img = qr.make_image(fill_color="black", back_color="white")
-                
-                # Convert to base64
-                buffer = BytesIO()
-                img.save(buffer, format='PNG')
-                img_str = base64.b64encode(buffer.getvalue()).decode()
-                
-                return jsonify({
-                    'success': True,
-                    'qr_code': img_str,
-                    'qr_hash': existing_qr.qr_code_hash,
-                    'expires_at': existing_qr.expires_at.isoformat(),
-                    'generated_at': existing_qr.generated_at.isoformat(),
-                    'message': 'Using existing QR code for today'
-                })
+        if existing_qr and existing_qr.expires_at > now:
+            # Return existing QR code if it's still valid
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            qr.add_data(existing_qr.qr_code_hash)
+            qr.make(fit=True)
+            
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert to base64
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            return jsonify({
+                'success': True,
+                'qr_code': img_str,
+                'qr_hash': existing_qr.qr_code_hash,
+                'expires_at': existing_qr.expires_at.isoformat(),
+                'generated_at': existing_qr.generated_at.isoformat(),
+                'message': 'Using existing QR code (valid for 24 hours)'
+            })
         
-        # Generate new QR code for today
+        # Generate new QR code valid for 24 hours
         qr_hash = str(uuid.uuid4())
         
-        # Set expiration to end of today (23:59:59)
-        expires_at = datetime.combine(today, datetime.max.time().replace(microsecond=0))
+        # Set expiration to 24 hours from now
+        expires_at = now + timedelta(hours=24)
         
         # Deactivate any existing QR codes
         if existing_qr:
@@ -4141,8 +4146,8 @@ def generate_qr_code():
             'qr_code': img_str,
             'qr_hash': qr_hash,
             'expires_at': expires_at.isoformat(),
-            'generated_at': datetime.utcnow().isoformat(),
-            'message': 'New QR code generated for today'
+            'generated_at': now.isoformat(),
+            'message': 'New QR code generated (valid for 24 hours)'
         })
         
     except Exception as e:
@@ -4483,7 +4488,38 @@ def scan_qr_code():
         if existing_attendance:
             return jsonify({'success': False, 'error': 'Attendance already marked for this session'})
         
-        # Mark attendance
+        # Time-based attendance logic
+        now = datetime.utcnow()
+        current_time = now.time()
+        
+        # Parse time slot start and end times
+        try:
+            start_time = datetime.strptime(time_slot.start_time, '%H:%M').time()
+            end_time = datetime.strptime(time_slot.end_time, '%H:%M').time()
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid time slot format'})
+        
+        # Check if class is currently active
+        if current_time < start_time:
+            return jsonify({'success': False, 'error': f'Class has not started yet. Class starts at {time_slot.start_time}'})
+        
+        if current_time > end_time:
+            return jsonify({'success': False, 'error': f'Class has ended. Class ended at {time_slot.end_time}'})
+        
+        # Determine attendance status based on time
+        # Calculate minutes late (15 minutes grace period)
+        grace_period = timedelta(minutes=15)
+        class_start_datetime = datetime.combine(date.today(), start_time)
+        late_threshold = class_start_datetime + grace_period
+        
+        if now > late_threshold:
+            status = 'late'
+            status_message = f'Late entry marked for {student.name} (arrived {((now - class_start_datetime).total_seconds() / 60):.0f} minutes after class start)'
+        else:
+            status = 'present'
+            status_message = f'Attendance marked for {student.name}'
+        
+        # Mark attendance with determined status
         attendance = Attendance(
             student_id=student.id,
             course_id=course_id,
@@ -4491,7 +4527,7 @@ def scan_qr_code():
             time_slot_id=time_slot_id,
             marked_by=current_user.id,
             qr_code_used=qr_hash,
-            status='present'  # Default status
+            status=status
         )
         
         db.session.add(attendance)
@@ -4501,13 +4537,15 @@ def scan_qr_code():
         qr_code.is_active = False
         db.session.commit()
         
-        print(f"Debug: Successfully marked attendance for {student.name}")
+        print(f"Debug: Successfully marked {status} attendance for {student.name}")
         
         return jsonify({
             'success': True,
-            'message': f'Attendance marked for {student.name}',
+            'message': status_message,
             'student_name': student.name,
-            'course_name': f'{course.code} - {course.name}'
+            'course_name': f'{course.code} - {course.name}',
+            'status': status,
+            'marked_at': now.isoformat()
         })
         
     except Exception as e:
@@ -4562,6 +4600,29 @@ def attendance_scanner():
         print(f"Error in attendance_scanner route: {str(e)}")
         flash(f'Error loading attendance scanner: {str(e)}', 'error')
         return redirect(url_for('faculty_dashboard'))
+
+@app.route('/faculty/mark_absent_manually', methods=['POST'])
+@login_required
+def mark_absent_manually():
+    """Manual endpoint to trigger absent marking for faculty"""
+    if current_user.role != 'faculty':
+        return jsonify({'success': False, 'error': 'Only faculty can mark attendance'})
+    
+    try:
+        # Run the absent marking process
+        mark_absent_students()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Automatic absent marking completed successfully'
+        })
+        
+    except Exception as e:
+        print(f"Error in manual absent marking: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Error marking absent students: {str(e)}'
+        })
 
 @app.route('/student/my_qr_code')
 @login_required
@@ -5096,9 +5157,121 @@ def init_database_connection():
                 return False
     return False
 
+def mark_absent_students():
+    """Automatically mark students as absent for classes that have ended"""
+    try:
+        now = datetime.utcnow()
+        today = date.today()
+        
+        print(f"Running automatic absent marking at {now}")
+        
+        # Get all time slots that have ended today
+        ended_classes = []
+        
+        # Get all time slots
+        time_slots = TimeSlot.query.all()
+        
+        for time_slot in time_slots:
+            try:
+                # Parse end time
+                end_time = datetime.strptime(time_slot.end_time, '%H:%M').time()
+                class_end_datetime = datetime.combine(today, end_time)
+                
+                # Check if class has ended (more than 5 minutes after end time to allow for processing)
+                if now > class_end_datetime + timedelta(minutes=5):
+                    ended_classes.append(time_slot)
+            except ValueError:
+                print(f"Warning: Invalid time format for time slot {time_slot.id}")
+                continue
+        
+        if not ended_classes:
+            print("No classes have ended yet today")
+            return
+        
+        print(f"Found {len(ended_classes)} classes that have ended")
+        
+        # For each ended class, find students who should be marked absent
+        absent_count = 0
+        
+        for time_slot in ended_classes:
+            # Get all courses that have classes in this time slot
+            timetables = Timetable.query.filter_by(time_slot_id=time_slot.id).all()
+            
+            for timetable in timetables:
+                # Get all students in the group for this timetable
+                student_group = timetable.student_group
+                if not student_group:
+                    continue
+                
+                # Get all students in this group
+                students = User.query.filter_by(
+                    role='student',
+                    student_group_id=student_group.id
+                ).all()
+                
+                for student in students:
+                    # Check if attendance is already marked for this student, course, and time slot today
+                    existing_attendance = Attendance.query.filter_by(
+                        student_id=student.id,
+                        course_id=timetable.course_id,
+                        time_slot_id=time_slot.id,
+                        date=today
+                    ).first()
+                    
+                    # If no attendance record exists, mark as absent
+                    if not existing_attendance:
+                        # Find a faculty member to mark the attendance (use the course teacher or first available faculty)
+                        faculty = timetable.teacher if timetable.teacher else User.query.filter_by(role='faculty').first()
+                        
+                        if faculty:
+                            absent_attendance = Attendance(
+                                student_id=student.id,
+                                course_id=timetable.course_id,
+                                time_slot_id=time_slot.id,
+                                date=today,
+                                status='absent',
+                                marked_by=faculty.id,
+                                marked_at=now,
+                                qr_code_used='auto_marked_absent'
+                            )
+                            
+                            db.session.add(absent_attendance)
+                            absent_count += 1
+                            
+                            print(f"Marked {student.name} as absent for {timetable.course.name} at {time_slot.start_time}-{time_slot.end_time}")
+        
+        if absent_count > 0:
+            db.session.commit()
+            print(f"Successfully marked {absent_count} students as absent")
+        else:
+            print("No students needed to be marked as absent")
+            
+    except Exception as e:
+        print(f"Error in mark_absent_students: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+
+def start_scheduler():
+    """Start the background scheduler for automatic tasks"""
+    def run_scheduler():
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    
+    # Schedule automatic absent marking to run every 5 minutes
+    schedule.every(5).minutes.do(mark_absent_students)
+    
+    # Start scheduler in a separate thread
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    print("✅ Background scheduler started for automatic absent marking")
+
 if __name__ == '__main__':
     # Initialize database connection before starting the app
     if init_database_connection():
+        # Start the background scheduler for automatic absent marking
+        start_scheduler()
         app.run(debug=True)
     else:
         print("❌ Cannot start application without database connection")
