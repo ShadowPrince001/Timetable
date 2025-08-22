@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Preview User Deletion - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+            Preview User Deletion
+        </h1>
+        <p class="text-muted">Review what will be deleted before removing user: <strong>{{ deletion_info.user.name }}</strong></p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow border-warning">
+            <div class="card-header py-3 bg-warning text-white">
+                <h6 class="m-0 font-weight-bold">
+                    <i class="fas fa-exclamation-triangle me-2"></i>⚠️ Deletion Impact Analysis
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This action will permanently delete the user and all related data. 
+                    This action cannot be undone.
+                </div>
+                
+                <h6 class="text-danger mb-3">
+                    <i class="fas fa-user-times me-2"></i>User to be deleted:
+                </h6>
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Name:</strong> {{ deletion_info.user.name }}<br>
+                                <strong>Username:</strong> {{ deletion_info.user.username }}<br>
+                                <strong>Email:</strong> {{ deletion_info.user.email }}
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Role:</strong> {{ deletion_info.user.role }}<br>
+                                <strong>Department:</strong> {{ deletion_info.user.department }}<br>
+                                <strong>Created:</strong> {{ deletion_info.user.created_at|safe_strftime('%Y-%m-%d') }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h6 class="text-danger mb-3">
+                    <i class="fas fa-database me-2"></i>Related records that will be deleted:
+                </h6>
+                
+                {% if deletion_info.total_related_records > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-danger">
+                                <tr>
+                                    <th>Record Type</th>
+                                    <th>Count</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if deletion_info.attendance_records %}
+                                <tr>
+                                    <td><i class="fas fa-clipboard-check me-2"></i>Attendance Records</td>
+                                    <td><span class="badge bg-danger">{{ deletion_info.attendance_records|length }}</span></td>
+                                    <td>Student attendance records will be permanently removed</td>
+                                </tr>
+                                {% endif %}
+                                
+                                {% if deletion_info.marked_attendance_count > 0 %}
+                                <tr>
+                                    <td><i class="fas fa-user-check me-2"></i>Attendance Markings</td>
+                                    <td><span class="badge bg-danger">{{ deletion_info.marked_attendance_count }}</span></td>
+                                    <td>Attendance records marked by this user will be reassigned or deleted</td>
+                                </tr>
+                                {% endif %}
+                                
+                                {% if deletion_info.qr_codes %}
+                                <tr>
+                                    <td><i class="fas fa-qrcode me-2"></i>QR Codes</td>
+                                    <td><span class="badge bg-danger">{{ deletion_info.qr_codes|length }}</span></td>
+                                    <td>Generated QR codes will be removed</td>
+                                </tr>
+                                {% endif %}
+                                
+                                {% if deletion_info.course_assignments %}
+                                <tr>
+                                    <td><i class="fas fa-chalkboard-teacher me-2"></i>Course Assignments</td>
+                                    <td><span class="badge bg-danger">{{ deletion_info.course_assignments|length }}</span></td>
+                                    <td>Teaching assignments will be removed</td>
+                                </tr>
+                                {% endif %}
+                                
+                                {% if deletion_info.timetable_entries %}
+                                <tr>
+                                    <td><i class="fas fa-calendar-alt me-2"></i>Timetable Entries</td>
+                                    <td><span class="badge bg-danger">{{ deletion_info.timetable_entries|length }}</span></td>
+                                    <td>Scheduled classes will be removed</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-danger">
+                        <i class="fas fa-calculator me-2"></i>
+                        <strong>Total Impact:</strong> {{ deletion_info.total_related_records }} related records will be affected
+                    </div>
+                {% else %}
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>No Related Records:</strong> This user has no related data that will be affected by deletion.
+                    </div>
+                {% endif %}
+                
+                <div class="d-flex justify-content-between mt-4">
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Cancel Deletion
+                    </a>
+                    
+                    <form method="POST" action="{{ url_for('admin_delete_user', user_id=deletion_info.user.id) }}" 
+                          style="display: inline;" onsubmit="return confirm('Are you absolutely sure you want to delete this user? This action cannot be undone.')">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i>Confirm Deletion
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-info-circle me-2"></i>Deletion Guidelines
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Before Deleting:</strong>
+                </div>
+                
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Ensure the user is no longer active
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Backup any important data if needed
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Consider deactivating instead of deleting
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Verify no critical dependencies exist
+                    </li>
+                </ul>
+                
+                <hr>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Note:</strong> If this user has many related records, consider using the 
+                    <a href="{{ url_for('admin_database_health_check') }}" class="alert-link">Database Health Check</a> 
+                    after deletion to ensure data integrity.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

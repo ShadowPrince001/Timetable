@@ -19,6 +19,8 @@ import qrcode
 import base64
 import uuid
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.pool import QueuePool
 
 load_dotenv()
 
@@ -47,7 +49,21 @@ if database_url:
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    print(f"✅ Using PostgreSQL database")
+    # Use enhanced engine with connection pooling for PostgreSQL
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': 3600,
+        'pool_size': 10,
+        'max_overflow': 20,
+        'connect_args': {
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5
+        }
+    }
+    print(f"✅ Using PostgreSQL database with enhanced connection pooling")
 elif flask_env == 'production':
     # Production but no DATABASE_URL - this shouldn't happen
     raise ValueError("DATABASE_URL environment variable must be set in production")
@@ -61,6 +77,31 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# Register database event handlers after app context is available
+with app.app_context():
+    @event.listens_for(db.engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        """Set SQLite pragmas for better performance"""
+        if 'sqlite' in str(dbapi_connection):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
+
+    @event.listens_for(db.engine, "checkout")
+    def receive_checkout(dbapi_connection, connection_record, connection_proxy):
+        """Handle connection checkout"""
+        try:
+            # Test connection before use
+            cursor = dbapi_connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+        except Exception as e:
+            print(f"Connection checkout failed: {e}")
+            # Mark connection as invalid
+            connection_proxy._pool.dispose()
+            raise e
 
 # Database Models
 class User(UserMixin, db.Model):
@@ -269,7 +310,18 @@ class QRCode(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except Exception as e:
+        print(f"Error loading user {user_id}: {e}")
+        # Try to reconnect and retry once
+        try:
+            db.engine.dispose()
+            time.sleep(1)
+            return User.query.get(int(user_id))
+        except Exception as retry_error:
+            print(f"Retry failed for user {user_id}: {retry_error}")
+            return None
 
 # Routes
 @app.route('/')
@@ -1123,36 +1175,74 @@ def admin_add_user():
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
-        name = request.form['name']
-        role = request.form['role']
-        department = request.form['department']
-        
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists', 'error')
+        try:
+            username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip()
+            password = request.form.get('password', '').strip()
+            name = request.form.get('name', '').strip()
+            role = request.form.get('role', '').strip()
+            department = request.form.get('department', '').strip()
+            
+            # Validate required fields
+            if not all([username, email, password, name, role]):
+                flash('All required fields must be filled', 'error')
+                return redirect(url_for('admin_add_user'))
+            
+            # Check if username already exists
+            if User.query.filter_by(username=username).first():
+                flash('Username already exists', 'error')
+                return redirect(url_for('admin_add_user'))
+            
+            # Check if email already exists
+            if User.query.filter_by(email=email).first():
+                flash('Email already exists', 'error')
+                return redirect(url_for('admin_add_user'))
+            
+            # Validate role
+            if role not in ['admin', 'faculty', 'student']:
+                flash('Invalid role selected', 'error')
+                return redirect(url_for('admin_add_user'))
+            
+            # Create user
+            user = User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+                name=name,
+                role=role,
+                department=department
+            )
+            
+            # Assign to group if student
+            if role == 'student' and request.form.get('group_id'):
+                try:
+                    group_id = int(request.form['group_id'])
+                    if StudentGroup.query.get(group_id):
+                        user.group_id = group_id
+                    else:
+                        flash('Invalid student group selected', 'warning')
+                except (ValueError, TypeError):
+                    flash('Invalid student group ID', 'warning')
+            
+            db.session.add(user)
+            db.session.commit()
+            flash('User added successfully', 'success')
+            return redirect(url_for('admin_users'))
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error adding user: {e}")
+            flash(f'Error adding user: {str(e)}', 'error')
             return redirect(url_for('admin_add_user'))
-        
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            name=name,
-            role=role,
-            department=department
-        )
-        
-        # Assign to group if student
-        if role == 'student' and request.form.get('group_id'):
-            user.group_id = int(request.form['group_id'])
-        db.session.add(user)
-        db.session.commit()
-        flash('User added successfully', 'success')
-        return redirect(url_for('admin_users'))
     
     # Get student groups for the form
-    student_groups = StudentGroup.query.all()
+    try:
+        student_groups = StudentGroup.query.all()
+    except Exception as e:
+        print(f"Error loading student groups: {e}")
+        student_groups = []
+        flash('Error loading student groups', 'warning')
+    
     return render_template('admin/add_user.html', student_groups=student_groups)
 
 @app.route('/admin/add_course', methods=['GET', 'POST'])
@@ -1258,34 +1348,95 @@ def admin_edit_user(user_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    user = User.query.get_or_404(user_id)
-    
-    if request.method == 'POST':
-        user.name = request.form['name']
-        user.username = request.form['username']
-        user.email = request.form['email']
-        user.role = request.form['role']
-        user.department = request.form['department']
-        user.phone = request.form.get('phone', '')
-        user.address = request.form.get('address', '')
+    try:
+        user = User.query.get_or_404(user_id)
         
-        # Handle group assignment for students
-        if user.role == 'student' and request.form.get('group_id'):
-            user.group_id = int(request.form['group_id'])
-        elif user.role != 'student':
-            user.group_id = None
+        if request.method == 'POST':
+            try:
+                name = request.form.get('name', '').strip()
+                username = request.form.get('username', '').strip()
+                email = request.form.get('email', '').strip()
+                role = request.form.get('role', '').strip()
+                department = request.form.get('department', '').strip()
+                phone = request.form.get('phone', '').strip()
+                address = request.form.get('address', '').strip()
+                
+                # Validate required fields
+                if not all([name, username, email, role]):
+                    flash('All required fields must be filled', 'error')
+                    return redirect(url_for('admin_edit_user', user_id=user_id))
+                
+                # Check if username already exists (excluding current user)
+                existing_user = User.query.filter_by(username=username).first()
+                if existing_user and existing_user.id != user.id:
+                    flash('Username already exists', 'error')
+                    return redirect(url_for('admin_edit_user', user_id=user_id))
+                
+                # Check if email already exists (excluding current user)
+                existing_user = User.query.filter_by(email=email).first()
+                if existing_user and existing_user.id != user.id:
+                    flash('Email already exists', 'error')
+                    return redirect(url_for('admin_edit_user', user_id=user_id))
+                
+                # Validate role
+                if role not in ['admin', 'faculty', 'student']:
+                    flash('Invalid role selected', 'error')
+                    return redirect(url_for('admin_edit_user', user_id=user_id))
+                
+                # Update user fields
+                user.name = name
+                user.username = username
+                user.email = email
+                user.role = role
+                user.department = department
+                user.phone = phone
+                user.address = address
+                
+                # Handle group assignment for students
+                if user.role == 'student' and request.form.get('group_id'):
+                    try:
+                        group_id = int(request.form['group_id'])
+                        if StudentGroup.query.get(group_id):
+                            user.group_id = group_id
+                        else:
+                            flash('Invalid student group selected', 'warning')
+                            user.group_id = None
+                    except (ValueError, TypeError):
+                        flash('Invalid student group ID', 'warning')
+                        user.group_id = None
+                elif user.role != 'student':
+                    user.group_id = None
+                
+                # Only update password if provided
+                if request.form.get('password'):
+                    password = request.form.get('password', '').strip()
+                    if password:
+                        user.password_hash = generate_password_hash(password)
+                
+                db.session.commit()
+                flash('User updated successfully', 'success')
+                return redirect(url_for('admin_users'))
+                
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error updating user: {e}")
+                flash(f'Error updating user: {str(e)}', 'error')
+                return redirect(url_for('admin_edit_user', user_id=user_id))
         
-        # Only update password if provided
-        if request.form.get('password'):
-            user.password_hash = generate_password_hash(request.form['password'])
+        # Get student groups for the form
+        try:
+            student_groups = StudentGroup.query.all()
+        except Exception as e:
+            print(f"Error loading student groups: {e}")
+            student_groups = []
+            flash('Error loading student groups', 'warning')
         
-        db.session.commit()
-        flash('User updated successfully', 'success')
+        return render_template('admin/edit_user.html', user=user, student_groups=student_groups)
+        
+    except Exception as e:
+        print(f"Error in admin_edit_user: {e}")
+        flash(f'Error loading user: {str(e)}', 'error')
         return redirect(url_for('admin_users'))
-    
-    # Get student groups for the form
-    student_groups = StudentGroup.query.all()
-    return render_template('admin/edit_user.html', user=user, student_groups=student_groups)
 
 @app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -1294,17 +1445,140 @@ def admin_delete_user(user_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    user = User.query.get_or_404(user_id)
-    
-    # Prevent deleting the current user
-    if user.id == current_user.id:
-        flash('You cannot delete your own account', 'error')
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        # Prevent deleting the current user
+        if user.id == current_user.id:
+            flash('You cannot delete your own account', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Check what records will be affected
+        related_records = []
+        
+        # Check attendance records
+        attendance_count = Attendance.query.filter_by(student_id=user.id).count()
+        if attendance_count > 0:
+            related_records.append(f"{attendance_count} attendance record(s)")
+        
+        # Check if user is marked by in attendance records
+        marked_by_count = Attendance.query.filter_by(marked_by=user.id).count()
+        if marked_by_count > 0:
+            related_records.append(f"{marked_by_count} attendance marking record(s)")
+        
+        # Check QR codes
+        qr_count = QRCode.query.filter_by(user_id=user.id).count()
+        if qr_count > 0:
+            related_records.append(f"{qr_count} QR code(s)")
+        
+        # Check course teacher assignments
+        teacher_count = CourseTeacher.query.filter_by(teacher_id=user.id).count()
+        if teacher_count > 0:
+            related_records.append(f"{teacher_count} course teaching assignment(s)")
+        
+        # Check timetables
+        timetable_count = Timetable.query.filter_by(teacher_id=user.id).count()
+        if timetable_count > 0:
+            related_records.append(f"{timetable_count} timetable entry(ies)")
+        
+        # If there are related records, handle them properly
+        if related_records:
+            print(f"Deleting user {user.id} with related records: {related_records}")
+            
+            # Handle attendance records where user is the student
+            if attendance_count > 0:
+                print(f"Removing {attendance_count} attendance records for user {user.id}")
+                Attendance.query.filter_by(student_id=user.id).delete()
+            
+            # Handle attendance records where user is the faculty who marked attendance
+            if marked_by_count > 0:
+                print(f"Updating {marked_by_count} attendance records marked by user {user.id}")
+                # Find another faculty user to reassign these records
+                other_faculty = User.query.filter(
+                    User.role == 'faculty',
+                    User.id != user.id
+                ).first()
+                
+                if other_faculty:
+                    Attendance.query.filter_by(marked_by=user.id).update({
+                        'marked_by': other_faculty.id
+                    })
+                    print(f"Reassigned attendance records to faculty {other_faculty.id}")
+                else:
+                    # If no other faculty, delete these records
+                    Attendance.query.filter_by(marked_by=user.id).delete()
+                    print("No other faculty found, deleted attendance records")
+            
+            # Handle QR codes
+            if qr_count > 0:
+                print(f"Removing {qr_count} QR codes for user {user.id}")
+                QRCode.query.filter_by(user_id=user.id).delete()
+            
+            # Handle course teacher assignments
+            if teacher_count > 0:
+                print(f"Removing {teacher_count} course teaching assignments for user {user.id}")
+                CourseTeacher.query.filter_by(teacher_id=user.id).delete()
+            
+            # Handle timetables
+            if timetable_count > 0:
+                print(f"Removing {timetable_count} timetable entries for user {user.id}")
+                Timetable.query.filter_by(teacher_id=user.id).delete()
+        
+        # Now delete the user
+        db.session.delete(user)
+        db.session.commit()
+        
+        flash(f'User "{user.name}" deleted successfully. Removed {len(related_records)} related record types.', 'success')
         return redirect(url_for('admin_users'))
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting user {user_id}: {e}")
+        flash(f'Error deleting user: {str(e)}', 'error')
+        return redirect(url_for('admin_users'))
+
+@app.route('/admin/preview_user_deletion/<int:user_id>')
+@login_required
+def admin_preview_user_deletion(user_id):
+    """Preview what will be deleted when removing a user"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
     
-    db.session.delete(user)
-    db.session.commit()
-    flash('User deleted successfully', 'success')
-    return redirect(url_for('admin_users'))
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        # Prevent previewing deletion of current user
+        if user.id == current_user.id:
+            flash('You cannot delete your own account', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Gather information about related records
+        deletion_info = {
+            'user': user,
+            'attendance_records': Attendance.query.filter_by(student_id=user.id).all(),
+            'marked_attendance_count': Attendance.query.filter_by(marked_by=user.id).count(),
+            'qr_codes': QRCode.query.filter_by(user_id=user.id).all(),
+            'course_assignments': CourseTeacher.query.filter_by(teacher_id=user.id).all(),
+            'timetable_entries': Timetable.query.filter_by(teacher_id=user.id).all(),
+            'total_related_records': 0
+        }
+        
+        # Calculate total related records
+        deletion_info['total_related_records'] = (
+            len(deletion_info['attendance_records']) +
+            deletion_info['marked_attendance_count'] +
+            len(deletion_info['qr_codes']) +
+            len(deletion_info['course_assignments']) +
+            len(deletion_info['timetable_entries'])
+        )
+        
+        return render_template('admin/preview_user_deletion.html', deletion_info=deletion_info)
+        
+    except Exception as e:
+        print(f"Error previewing user deletion {user_id}: {e}")
+        flash(f'Error previewing user deletion: {str(e)}', 'error')
+        return redirect(url_for('admin_users'))
 
 @app.route('/admin/edit_course/<int:course_id>', methods=['GET', 'POST'])
 @login_required
@@ -1504,62 +1778,98 @@ def admin_manage_group_courses(group_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    group = StudentGroup.query.get_or_404(group_id)
-    
-    if request.method == 'POST':
-        course_ids = request.form.getlist('courses')
+    try:
+        group = StudentGroup.query.get_or_404(group_id)
         
-        # Remove existing course assignments
-        StudentGroupCourse.query.filter_by(student_group_id=group_id).delete()
-        
-        # Add new course assignments with retry logic for sequence issues
-        max_retries = 2
-        for attempt in range(max_retries):
+        if request.method == 'POST':
+            course_ids = request.form.getlist('courses')
+            print(f"Debug: Updating group {group_id} with courses: {course_ids}")
+            
+            # Remove duplicates from course_ids to prevent constraint violations
+            unique_course_ids = list(set([int(cid) for cid in course_ids if cid]))
+            if len(unique_course_ids) != len(course_ids):
+                duplicate_count = len(course_ids) - len(unique_course_ids)
+                print(f"Debug: Removed {duplicate_count} duplicate course selections")
+                flash(f'Note: {duplicate_count} duplicate course selections were automatically removed', 'info')
+            
+            # Remove existing course assignments
             try:
-                # Clear any existing objects in session
-                db.session.rollback()
-                
-                # Add new course assignments
-                for course_id in course_ids:
-                    if course_id:
+                StudentGroupCourse.query.filter_by(student_group_id=group_id).delete()
+                print(f"Debug: Removed existing course assignments for group {group_id}")
+            except Exception as e:
+                print(f"Error removing existing assignments: {e}")
+                flash(f'Error removing existing assignments: {str(e)}', 'error')
+                return redirect(url_for('admin_student_groups'))
+            
+            # Add new course assignments with retry logic for sequence issues
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    print(f"Debug: Attempt {attempt + 1} to add course assignments")
+                    
+                    # Clear any existing objects in session
+                    db.session.rollback()
+                    
+                    # Add new course assignments (now guaranteed to be unique)
+                    for course_id in unique_course_ids:
+                        print(f"Debug: Adding course {course_id} to group {group_id}")
                         group_course = StudentGroupCourse(
                             student_group_id=group_id,
-                            course_id=int(course_id)
+                            course_id=course_id
                         )
                         db.session.add(group_course)
-                
-                db.session.commit()
-                flash('Group courses updated successfully', 'success')
-                return redirect(url_for('admin_student_groups'))
-                
-            except IntegrityError as e:
-                if 'duplicate key value violates unique constraint "student_group_course_pkey"' in str(e) and attempt == 0:
-                    print(f"Sequence issue detected, attempting to reset sequence...")
-                    if reset_student_group_course_sequence():
-                        print("Sequence reset successful, retrying...")
-                        continue
-                    else:
-                        print("Failed to reset sequence")
+                    
+                    db.session.commit()
+                    print(f"Debug: Successfully added {len(unique_course_ids)} unique courses to group {group_id}")
+                    flash(f'Group courses updated successfully! Added {len(unique_course_ids)} unique courses.', 'success')
+                    return redirect(url_for('admin_student_groups'))
+                    
+                except IntegrityError as e:
+                    print(f"Debug: IntegrityError on attempt {attempt + 1}: {e}")
+                    
+                    # Check if it's a sequence issue
+                    if 'duplicate key value violates unique constraint "student_group_course_pkey"' in str(e) and attempt == 0:
+                        print(f"Sequence issue detected, attempting to reset sequence...")
+                        if reset_student_group_course_sequence():
+                            print("Sequence reset successful, retrying...")
+                            continue
+                        else:
+                            print("Failed to reset sequence")
+                            break
+                    
+                    # Check if it's a unique constraint issue (shouldn't happen now with deduplication)
+                    elif 'duplicate key value violates unique constraint "unique_group_course"' in str(e):
+                        print("Unique constraint violation detected (unexpected after deduplication)")
+                        # This shouldn't happen now, but handle it gracefully
+                        flash('Unexpected constraint violation. Please try again or contact support.', 'error')
                         break
-                else:
-                    # Re-raise if it's not a sequence issue or we've already tried
+                    else:
+                        # Re-raise if it's not a sequence issue or we've already tried
+                        print(f"Re-raising IntegrityError: {e}")
+                        raise
+                except Exception as e:
+                    print(f"Debug: Exception on attempt {attempt + 1}: {e}")
+                    # Re-raise any other exceptions
                     raise
-            except Exception as e:
-                # Re-raise any other exceptions
-                raise
+            
+            # If we get here, all retries failed
+            print(f"Debug: All {max_retries} attempts failed")
+            flash('Failed to update group courses. Please run Database Health Check first.', 'error')
+            return redirect(url_for('admin_student_groups'))
         
-        # If we get here, all retries failed
-        flash('Failed to update group courses due to database sequence issue. Please contact administrator.', 'error')
+        # Get all courses and current group courses
+        all_courses = Course.query.all()
+        current_course_ids = [gc.course_id for gc in group.courses]
+        
+        return render_template('admin/manage_group_courses.html', 
+                             group=group, 
+                             all_courses=all_courses, 
+                             current_course_ids=current_course_ids)
+                             
+    except Exception as e:
+        print(f"Error in admin_manage_group_courses: {e}")
+        flash(f'Error managing group courses: {str(e)}', 'error')
         return redirect(url_for('admin_student_groups'))
-    
-    # Get all courses and current group courses
-    all_courses = Course.query.all()
-    current_course_ids = [gc.course_id for gc in group.courses]
-    
-    return render_template('admin/manage_group_courses.html', 
-                         group=group, 
-                         all_courses=all_courses, 
-                         current_course_ids=current_course_ids)
 
 # Faculty Routes
 @app.route('/faculty/take_attendance/<int:timetable_id>', endpoint='faculty_take_attendance')
@@ -1618,6 +1928,12 @@ def save_attendance():
         # Validate required fields
         if not all([timetable_id, date_str]):
             flash('Missing required fields', 'error')
+            return redirect(url_for('faculty_dashboard'))
+        
+        # Get the timetable object
+        timetable = Timetable.query.get(timetable_id)
+        if not timetable:
+            flash('Timetable not found', 'error')
             return redirect(url_for('faculty_dashboard'))
         
         try:
@@ -3916,6 +4232,35 @@ def admin_reset_student_group_course_sequence():
     
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/admin/database_health_check')
+@login_required
+def admin_database_health_check():
+    """Admin route to run comprehensive database health check"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        print("🔍 Admin requested database health check...")
+        health_result = check_database_health()
+        
+        if health_result['healthy']:
+            flash('Database health check completed - no issues found', 'success')
+        else:
+            if health_result['fixes_applied']:
+                flash(f'Database health check completed - {len(health_result["fixes_applied"])} fixes applied, {len(health_result["issues"])} issues remain', 'warning')
+            else:
+                flash(f'Database health check completed - {len(health_result["issues"])} issues found', 'error')
+        
+        # Log the results for debugging
+        print(f"Health check results: {health_result}")
+        
+    except Exception as e:
+        print(f"Error running health check: {e}")
+        flash(f'Error running database health check: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
 @app.route('/api/mark-attendance', methods=['POST'])
 @login_required
 def api_mark_attendance():
@@ -4472,5 +4817,288 @@ def admin_attendance_statistics():
         flash(f'Error loading attendance statistics: {str(e)}', 'error')
         return redirect(url_for('admin_dashboard'))
 
+def check_database_health():
+    """Comprehensive database health check to identify and fix common issues"""
+    try:
+        issues = []
+        fixes_applied = []
+        
+        print("🔍 Starting database health check...")
+        
+        # Check if we're using PostgreSQL
+        if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
+            print("📊 PostgreSQL database detected, checking sequences...")
+            
+            # Check and fix QR code sequence
+            try:
+                result = db.session.execute(db.text("SELECT COALESCE(MAX(id), 0) FROM qr_code"))
+                max_qr_id = result.scalar()
+                if max_qr_id is not None:
+                    db.session.execute(db.text(f"SELECT setval('qr_code_id_seq', {max_qr_id + 1}, false)"))
+                    fixes_applied.append(f"QR code sequence reset to {max_qr_id + 1}")
+            except Exception as e:
+                issues.append(f"QR code sequence check failed: {e}")
+            
+            # Check and fix student group course sequence
+            try:
+                result = db.session.execute(db.text("SELECT COALESCE(MAX(id), 0) FROM student_group_course"))
+                max_sgc_id = result.scalar()
+                if max_sgc_id is not None:
+                    db.session.execute(db.text(f"SELECT setval('student_group_course_id_seq', {max_sgc_id + 1}, false)"))
+                    fixes_applied.append(f"Student group course sequence reset to {max_sgc_id + 1}")
+            except Exception as e:
+                issues.append(f"Student group course sequence check failed: {e}")
+            
+            # Check for orphaned records
+            try:
+                # Check for attendance records with invalid student_id
+                orphaned_attendance = db.session.execute(db.text(
+                    "SELECT COUNT(*) FROM attendance WHERE student_id IS NULL OR student_id NOT IN (SELECT id FROM \"user\")"
+                )).scalar()
+                if orphaned_attendance > 0:
+                    issues.append(f"Found {orphaned_attendance} attendance records with invalid student_id")
+                
+                # Check for attendance records with invalid course_id
+                orphaned_course_attendance = db.session.execute(db.text(
+                    "SELECT COUNT(*) FROM attendance WHERE course_id IS NULL OR course_id NOT IN (SELECT id FROM course)"
+                )).scalar()
+                if orphaned_course_attendance > 0:
+                    issues.append(f"Found {orphaned_course_attendance} attendance records with invalid course_id")
+                
+                # Check for attendance records with invalid time_slot_id
+                orphaned_timeslot_attendance = db.session.execute(db.text(
+                    "SELECT COUNT(*) FROM attendance WHERE time_slot_id IS NULL OR time_slot_id NOT IN (SELECT id FROM time_slot)"
+                )).scalar()
+                if orphaned_timeslot_attendance > 0:
+                    issues.append(f"Found {orphaned_timeslot_attendance} attendance records with invalid time_slot_id")
+                
+            except Exception as e:
+                issues.append(f"Orphaned record check failed: {e}")
+            
+            # Check for unique constraint violations in student_group_course
+            try:
+                # Find duplicate entries that violate unique constraint
+                duplicates = db.session.execute(db.text("""
+                    SELECT student_group_id, course_id, COUNT(*) as count
+                    FROM student_group_course 
+                    GROUP BY student_group_id, course_id 
+                    HAVING COUNT(*) > 1
+                """)).fetchall()
+                
+                if duplicates:
+                    issues.append(f"Found {len(duplicates)} duplicate group-course combinations")
+                    
+                    # Fix duplicates by keeping only one record per combination
+                    for duplicate in duplicates:
+                        group_id, course_id, count = duplicate
+                        if count > 1:
+                            # Delete all but one record for this combination
+                            db.session.execute(db.text("""
+                                DELETE FROM student_group_course 
+                                WHERE student_group_id = %s AND course_id = %s
+                                AND id NOT IN (
+                                    SELECT MIN(id) FROM student_group_course 
+                                    WHERE student_group_id = %s AND course_id = %s
+                                )
+                            """), (group_id, course_id, group_id, course_id))
+                            
+                            deleted_count = db.session.execute(db.text("""
+                                SELECT COUNT(*) FROM student_group_course 
+                                WHERE student_group_id = %s AND course_id = %s
+                            """), (group_id, course_id)).scalar()
+                            
+                            fixes_applied.append(f"Fixed duplicate group {group_id}-course {course_id}: kept 1 record")
+                
+            except Exception as e:
+                issues.append(f"Duplicate constraint check failed: {e}")
+            
+            # Commit all fixes
+            if fixes_applied:
+                db.session.commit()
+                print("✅ Database fixes applied successfully")
+            else:
+                print("✅ No database fixes needed")
+                
+        else:
+            print("📊 SQLite database detected - sequence checks not needed")
+        
+        # Check table row counts
+        try:
+            tables = ['user', 'course', 'classroom', 'time_slot', 'timetable', 'attendance', 'qr_code', 'student_group', 'student_group_course']
+            for table in tables:
+                try:
+                    count = db.session.execute(db.text(f"SELECT COUNT(*) FROM {table}")).scalar()
+                    print(f"📋 {table}: {count} rows")
+                except Exception as e:
+                    issues.append(f"Failed to count rows in {table}: {e}")
+        except Exception as e:
+            issues.append(f"Table count check failed: {e}")
+        
+        # Report results
+        if issues:
+            print("⚠️  Database health check found issues:")
+            for issue in issues:
+                print(f"   - {issue}")
+        else:
+            print("✅ Database health check completed - no issues found")
+            
+        if fixes_applied:
+            print("🔧 Fixes applied:")
+            for fix in fixes_applied:
+                print(f"   - {fix}")
+        
+        return {
+            'issues': issues,
+            'fixes_applied': fixes_applied,
+            'healthy': len(issues) == 0
+        }
+        
+    except Exception as e:
+        print(f"❌ Database health check failed: {e}")
+        return {
+            'issues': [f"Health check failed: {e}"],
+            'fixes_applied': [],
+            'healthy': False
+        }
+
+# Add connection event handlers
+# Connection event handlers will be registered after app context is available
+
+# Database connection recovery function
+def get_db_engine():
+    """Get database engine with connection recovery"""
+    if 'DATABASE_URL' in os.environ:
+        database_url = os.environ['DATABASE_URL']
+        # Add connection pooling and recovery options
+        engine = create_engine(
+            database_url,
+            poolclass=QueuePool,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,  # Test connections before use
+            pool_recycle=3600,   # Recycle connections every hour
+            connect_args={
+                "connect_timeout": 10,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5
+            }
+        )
+        return engine
+    return None
+
+# Enhanced database session with retry logic
+def get_db_session_with_retry(max_retries=3, delay=1):
+    """Get database session with automatic retry on connection failures"""
+    for attempt in range(max_retries):
+        try:
+            session = db.session
+            # Test the connection
+            session.execute("SELECT 1")
+            return session
+        except Exception as e:
+            print(f"Database connection attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff
+                # Try to refresh the session
+                try:
+                    db.session.rollback()
+                except:
+                    pass
+            else:
+                print("Max retries reached, raising exception")
+                raise e
+    return None
+
+@app.route('/api/db-health')
+def api_db_health():
+    """Check database connection health"""
+    try:
+        # Test basic connection
+        result = db.session.execute(text("SELECT 1 as test"))
+        basic_connection = result.fetchone()[0] == 1
+        
+        # Test a simple query
+        user_count = User.query.count()
+        
+        # Get connection info
+        engine_info = {
+            'pool_size': db.engine.pool.size(),
+            'checked_in': db.engine.pool.checkedin(),
+            'checked_out': db.engine.pool.checkedout(),
+            'overflow': db.engine.pool.overflow(),
+            'invalid': db.engine.pool.invalid()
+        }
+        
+        return jsonify({
+            'status': 'healthy',
+            'basic_connection': basic_connection,
+            'user_count': user_count,
+            'connection_pool': engine_info,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+@app.route('/api/db-reconnect')
+def api_db_reconnect():
+    """Force database reconnection"""
+    try:
+        # Dispose of current connection pool
+        db.engine.dispose()
+        
+        # Test new connection
+        result = db.session.execute(text("SELECT 1 as test"))
+        test_result = result.fetchone()[0] == 1
+        
+        return jsonify({
+            'status': 'reconnected',
+            'test_result': test_result,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'reconnection_failed',
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+def init_database_connection():
+    """Initialize database connection with retry logic"""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Test the connection
+            with app.app_context():
+                result = db.session.execute(text("SELECT 1"))
+                test_result = result.fetchone()[0]
+                if test_result == 1:
+                    print("✅ Database connection established successfully")
+                    return True
+        except Exception as e:
+            print(f"❌ Database connection attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"🔄 Retrying in {2 ** attempt} seconds...")
+                time.sleep(2 ** attempt)
+            else:
+                print("💥 Max retries reached. Database connection failed.")
+                return False
+    return False
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Initialize database connection before starting the app
+    if init_database_connection():
+        app.run(debug=True)
+    else:
+        print("❌ Cannot start application without database connection")

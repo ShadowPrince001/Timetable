@@ -28,6 +28,11 @@
                             Select the courses that students in <strong>{{ group.name }}</strong> will study. 
                             All students in this group will be automatically enrolled in the selected courses.
                         </p>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Smart Duplicate Handling:</strong> If you accidentally select the same course multiple times, 
+                            the system will automatically ignore duplicates and only assign each course once.
+                        </div>
                     </div>
                     
                     <div class="row">
@@ -129,5 +134,55 @@
         </div>
     </div>
 </div>
+
+<script>
+// Prevent duplicate course selections
+document.addEventListener('DOMContentLoaded', function() {
+    const courseCheckboxes = document.querySelectorAll('input[name="courses"]');
+    const submitButton = document.querySelector('button[type="submit"]');
+    
+    // Function to check for duplicates
+    function checkForDuplicates() {
+        const selectedCourses = [];
+        courseCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedCourses.push(checkbox.value);
+            }
+        });
+        
+        const uniqueCourses = [...new Set(selectedCourses)];
+        const duplicateCount = selectedCourses.length - uniqueCourses.length;
+        
+        if (duplicateCount > 0) {
+            // Show warning about duplicates
+            if (!document.getElementById('duplicate-warning')) {
+                const warning = document.createElement('div');
+                warning.id = 'duplicate-warning';
+                warning.className = 'alert alert-warning mt-3';
+                warning.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Duplicate Selection Detected:</strong> You have selected the same course multiple times. 
+                    The system will automatically handle this, but you may want to review your selections.
+                `;
+                submitButton.parentNode.insertBefore(warning, submitButton);
+            }
+        } else {
+            // Remove warning if no duplicates
+            const warning = document.getElementById('duplicate-warning');
+            if (warning) {
+                warning.remove();
+            }
+        }
+    }
+    
+    // Add event listeners to all checkboxes
+    courseCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', checkForDuplicates);
+    });
+    
+    // Initial check
+    checkForDuplicates();
+});
+</script>
 {% endblock %}
 
