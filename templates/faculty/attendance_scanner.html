@@ -418,6 +418,7 @@ let isScanning = false; // Track if scanner is actively running
 let lastScanTime = 0; // Track when last scan occurred
 let scanCooldown = 2000; // Minimum time between scans (2 seconds)
 let isProcessingScan = false; // Prevent multiple simultaneous scan processing
+let countdownInterval = null; // Track countdown interval
 
 // Get URL parameters
 function getUrlParameter(name) {
@@ -648,6 +649,23 @@ function stopScanner() {
             isScanning = false;
             updateScannerStatus();
             
+            // Reset cooldown and processing flags
+            isProcessingScan = false;
+            lastScanTime = 0;
+            
+            // Clear countdown interval
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            
+            // Reset cooldown display
+            const cooldownDisplay = document.getElementById('cooldown-display');
+            if (cooldownDisplay) {
+                cooldownDisplay.style.color = '#007bff';
+                cooldownDisplay.textContent = (scanCooldown / 1000);
+            }
+            
             // Reset visual indicators
             const scannerContainer = document.getElementById('qr-reader');
             if (scannerContainer) {
@@ -673,19 +691,13 @@ function onScanSuccess(decodedText, decodedResult) {
     
     const currentTime = Date.now();
     
-    // Check if enough time has passed since last scan
-    if (currentTime - lastScanTime < scanCooldown) {
-        console.log('Scan cooldown active, ignoring scan');
-        return;
-    }
-    
     // Check if already processing a scan
     if (isProcessingScan) {
         console.log('Already processing a scan, ignoring duplicate');
         return;
     }
     
-    // Check if this QR code was already scanned
+    // Check if this QR code was already scanned in this session
     if (scannedQRCodes.has(decodedText)) {
         console.log('QR code already scanned in this session:', decodedText);
         playSound('duplicate');
@@ -694,9 +706,19 @@ function onScanSuccess(decodedText, decodedResult) {
         return;
     }
     
+    // Check if enough time has passed since last scan (cooldown)
+    if (currentTime - lastScanTime < scanCooldown) {
+        console.log('Scan cooldown active, ignoring scan. Time since last scan:', currentTime - lastScanTime, 'ms');
+        showStatus(`Scan cooldown active. Please wait ${((scanCooldown - (currentTime - lastScanTime)) / 1000).toFixed(1)} seconds.`, 'warning');
+        return;
+    }
+    
     // Set processing flag and update last scan time
     isProcessingScan = true;
     lastScanTime = currentTime;
+    
+    // Add QR code to scanned set immediately to prevent duplicates
+    scannedQRCodes.add(decodedText);
     
     // Show cooldown status
     showCooldownStatus();
@@ -802,13 +824,31 @@ function showCooldownStatus() {
             cooldownDisplay.textContent = (remainingCooldown / 1000).toFixed(1);
         }
         
-        // Reset color after cooldown
-        setTimeout(() => {
-            if (cooldownDisplay) {
-                cooldownDisplay.style.color = '#007bff'; // Blue when ready
-                cooldownDisplay.textContent = (scanCooldown / 1000);
+        // Clear any existing countdown
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+        }
+        
+        // Start countdown timer
+        countdownInterval = setInterval(() => {
+            const now = Date.now();
+            const timeSinceLastScan = now - lastScanTime;
+            const remainingCooldown = Math.max(0, scanCooldown - timeSinceLastScan);
+            
+            if (remainingCooldown > 0) {
+                if (cooldownDisplay) {
+                    cooldownDisplay.textContent = (remainingCooldown / 1000).toFixed(1);
+                }
+            } else {
+                // Cooldown finished
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                if (cooldownDisplay) {
+                    cooldownDisplay.style.color = '#007bff'; // Blue when ready
+                    cooldownDisplay.textContent = (scanCooldown / 1000);
+                }
             }
-        }, remainingCooldown);
+        }, 100); // Update every 100ms for smooth countdown
     }
 }
 
@@ -817,9 +857,6 @@ function isDuplicateQR(qrHash) {
     if (scannedQRCodes.has(qrHash)) {
         return true;
     }
-    
-    // Add to scanned set
-    scannedQRCodes.add(qrHash);
     
     // Keep only last 100 scanned codes to prevent memory issues
     if (scannedQRCodes.size > 100) {
@@ -833,7 +870,23 @@ function isDuplicateQR(qrHash) {
 // Function to reset duplicate tracking
 function resetDuplicateTracking() {
     scannedQRCodes.clear();
-    showStatus('Duplicate tracking reset', 'info');
+    isProcessingScan = false;
+    lastScanTime = 0;
+    
+    // Clear countdown interval
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
+    // Reset cooldown display
+    const cooldownDisplay = document.getElementById('cooldown-display');
+    if (cooldownDisplay) {
+        cooldownDisplay.style.color = '#007bff';
+        cooldownDisplay.textContent = (scanCooldown / 1000);
+    }
+    
+    showStatus('Duplicate tracking and cooldown reset', 'info');
 }
 
 // Function to update scanner status display
@@ -852,18 +905,28 @@ function updateScannerStatus() {
 
 // Function to show scanning statistics
 function showScanningStats() {
+    const currentTime = Date.now();
+    const timeSinceLastScan = currentTime - lastScanTime;
+    const remainingCooldown = Math.max(0, scanCooldown - timeSinceLastScan);
+    const isInCooldown = remainingCooldown > 0;
+    
     const stats = {
         totalScanned: scannedQRCodes.size,
         recentAttendance: recentAttendance.length,
         isScanning: isScanning,
-        scanCooldown: scanCooldown / 1000
+        scanCooldown: scanCooldown / 1000,
+        isInCooldown: isInCooldown,
+        remainingCooldown: remainingCooldown / 1000,
+        isProcessing: isProcessingScan
     };
     
     const message = `📊 Scanning Statistics:
 • Total QR Codes Scanned: ${stats.totalScanned}
 • Recent Attendance Records: ${stats.recentAttendance}
 • Scanner Status: ${stats.isScanning ? 'Active' : 'Stopped'}
-• Scan Cooldown: ${stats.scanCooldown} seconds`;
+• Scan Cooldown: ${stats.scanCooldown} seconds
+• Currently Processing: ${stats.isProcessing ? 'Yes' : 'No'}
+• Cooldown Status: ${stats.isInCooldown ? `Active (${stats.remainingCooldown.toFixed(1)}s remaining)` : 'Ready'}`;
     
     showStatus(message, 'info');
 }
@@ -933,14 +996,7 @@ function markQRAttendance(qrHash) {
         return;
     }
     
-    // Check for duplicate QR code
-    if (isDuplicateQR(qrHash)) {
-        console.log('Duplicate QR code detected:', qrHash);
-        playSound('duplicate');
-        showScanFeedback('duplicate', qrHash);
-        showStatus('Duplicate QR code detected. Attendance already marked for this code.', 'warning');
-        return;
-    }
+    // Note: Duplicate checking is now handled in onScanSuccess before calling this function
     
     // Prevent multiple simultaneous requests
     if (window.attendanceInProgress) {
@@ -1018,7 +1074,7 @@ function markQRAttendance(qrHash) {
             setTimeout(() => {
                 isProcessingScan = false;
                 console.log('Scan processing completed, ready for next scan');
-            }, 1000);
+            }, scanCooldown); // Use the full cooldown time
         } else {
             const errorMsg = data.error || 'Unknown error occurred';
             console.error('Server returned error:', errorMsg);
@@ -1036,7 +1092,7 @@ function markQRAttendance(qrHash) {
             setTimeout(() => {
                 isProcessingScan = false;
                 console.log('Scan processing completed after error, ready for next scan');
-            }, 1000);
+            }, scanCooldown); // Use the full cooldown time
         }
     })
     .catch(error => {
@@ -1054,7 +1110,7 @@ function markQRAttendance(qrHash) {
         setTimeout(() => {
             isProcessingScan = false;
             console.log('Scan processing completed after fetch error, ready for next scan');
-        }, 1000);
+        }, scanCooldown); // Use the full cooldown time
     });
 }
 
