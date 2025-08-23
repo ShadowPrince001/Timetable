@@ -1716,17 +1716,18 @@ function setupAntiScreenshotProtection() {
         });
     });
     
-    // Block keyboard shortcuts for screenshots
-    document.addEventListener('keydown', function(e) {
-        // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
-        if (
-            (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
-            e.key === 'PrintScreen' ||
-            e.key === 'F12' ||
-            (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
-            (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
-            (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
-        ) {
+            // Block keyboard shortcuts for screenshots
+        document.addEventListener('keydown', function(e) {
+            // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
+            if (
+                (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
+                e.key === 'PrintScreen' ||
+                e.key === 'F12' ||
+                (e.ctrlKey && e.shiftKey && e.key === 'S') || // Ctrl+Shift+S (Screenshot)
+                (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
+                (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
+                (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
+            ) {
             e.preventDefault();
             e.stopPropagation();
             return false;

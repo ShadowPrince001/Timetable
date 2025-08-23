@@ -36,6 +36,23 @@ function showView(viewType) {
     </div>
 </div>
 
+<!-- Timetable Regeneration Warning -->
+{% if session.get('timetable_regeneration_required') %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Warning:</strong> Recent changes to break times have removed scheduled classes. 
+            <strong>Timetable regeneration is required</strong> to ensure all classes are properly scheduled.
+            <a href="{{ url_for('admin_generate_timetables') }}" class="btn btn-warning btn-sm ms-3">
+                <i class="fas fa-magic me-1"></i>Regenerate Timetables
+            </a>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Timetable Generation Results Display -->
 {% if generation_results %}
 <div class="row mb-4">
@@ -170,71 +187,7 @@ function showView(viewType) {
                     </button>
                 </div>
             </div>
-            
-            <!-- Filter Section -->
-            <div class="card-body border-bottom">
-                <form id="filterForm" method="GET" class="row g-3">
-                    <div class="col-md-2">
-                        <label for="filter_day" class="form-label">Day</label>
-                        <select class="form-control" id="filter_day" name="day">
-                            <option value="">All Days</option>
-                            <option value="Monday">Monday</option>
-                            <option value="Tuesday">Tuesday</option>
-                            <option value="Wednesday">Wednesday</option>
-                            <option value="Thursday">Thursday</option>
-                            <option value="Friday">Friday</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_course" class="form-label">Course</label>
-                        <select class="form-control" id="filter_course" name="course">
-                            <option value="">All Courses</option>
-                            {% for course in courses %}
-                            <option value="{{ course.id }}">{{ course.code }} - {{ course.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_teacher" class="form-label">Teacher</label>
-                        <select class="form-control" id="filter_teacher" name="teacher">
-                            <option value="">All Teachers</option>
-                            {% for teacher in teachers %}
-                            <option value="{{ teacher.id }}">{{ teacher.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_classroom" class="form-label">Classroom</label>
-                        <select class="form-control" id="filter_classroom" name="classroom">
-                            <option value="">All Classrooms</option>
-                            {% for classroom in classrooms %}
-                            <option value="{{ classroom.id }}">{{ classroom.room_number }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label for="filter_group" class="form-label">Student Group</label>
-                        <select class="form-control" id="filter_group" name="group">
-                            <option value="">All Groups</option>
-                            {% for group in student_groups %}
-                            <option value="{{ group.id }}">{{ group.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">&nbsp;</label>
-                        <div>
-                            <button type="submit" class="btn btn-primary btn-sm">
-                                <i class="fas fa-filter me-1"></i>Filter
-                            </button>
-                            <a href="{{ url_for('admin_timetable') }}" class="btn btn-outline-secondary btn-sm">
-                                <i class="fas fa-times me-1"></i>Clear
-                            </a>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            
+
             <!-- View Toggle Buttons -->
             <div class="card-body border-bottom">
                 <div class="btn-group" role="group">

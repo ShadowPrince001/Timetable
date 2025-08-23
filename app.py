@@ -1182,7 +1182,12 @@ def admin_manage_breaks():
                 if conflicting_timetables:
                     for tt in conflicting_timetables:
                         db.session.delete(tt)
-                    flash(f'Removed {len(conflicting_timetables)} conflicting class(es) from this time slot', 'warning')
+                    flash(f'Removed {len(conflicting_timetables)} conflicting class(es) from this time slot. Timetable regeneration required.', 'warning')
+                else:
+                    flash('Break added successfully. No conflicting classes found.', 'success')
+                
+                # Store a flag indicating that timetable regeneration is required
+                session['timetable_regeneration_required'] = True
                 
             elif action == 'update_break':
                 slot_id = request.form.get('slot_id', type=int)
@@ -1203,7 +1208,11 @@ def admin_manage_breaks():
                     if conflicting_timetables:
                         for tt in conflicting_timetables:
                             db.session.delete(tt)
-                        flash(f'Removed {len(conflicting_timetables)} conflicting class(es) when converting to break', 'warning')
+                        flash(f'Removed {len(conflicting_timetables)} conflicting class(es) when converting to break. Timetable regeneration required.', 'warning')
+                        # Store a flag indicating that timetable regeneration is required
+                        session['timetable_regeneration_required'] = True
+                    else:
+                        flash('Time slot converted to break successfully', 'success')
                 
                 slot.break_type = new_break_type
                 if old_break_type == 'none':
@@ -3824,8 +3833,20 @@ def admin_generate_timetables():
     
     if request.method == 'POST':
         try:
-            # Initialize timetable generator
-            generator = MultiGroupTimetableGenerator()
+            # Get the selected algorithm
+            algorithm = request.form.get('algorithm', 'greedy')
+            
+            # Initialize timetable generator based on selected algorithm
+            if algorithm == 'genetic':
+                from genetic_timetable_generator import GeneticTimetableGenerator
+                # Create a genetic generator and adapt it to multi-group interface
+                genetic_generator = GeneticTimetableGenerator()
+                # For now, use the greedy algorithm as fallback since genetic is single-group only
+                generator = MultiGroupTimetableGenerator()
+                flash('Genetic Algorithm selected but not yet implemented for multi-group generation. Using Greedy Algorithm instead.', 'warning')
+            else:
+                generator = MultiGroupTimetableGenerator()
+                flash('Using Greedy Algorithm for timetable generation. This will be faster but may produce less optimal results.', 'info')
             
             # Get all time slots
             time_slots = TimeSlot.query.all()
@@ -3975,6 +3996,9 @@ def admin_generate_timetables():
             
             # Store detailed results in session for persistent display
             session['timetable_generation_results'] = success_details
+            
+            # Clear the regeneration warning since timetables have been successfully generated
+            session.pop('timetable_regeneration_required', None)
             
             # Show immediate success message
             flash(f"✅ Timetables generated successfully! {timetables_added} entries scheduled for {len(generated_timetables)} groups. "

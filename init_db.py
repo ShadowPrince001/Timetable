@@ -325,40 +325,40 @@ def init_sample_data():
             # Monday
             {'day': 'Monday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
             {'day': 'Monday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
-            {'day': 'Monday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},  # Break 11:00-11:15
-            {'day': 'Monday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
-            {'day': 'Monday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},  # Lunch 13:15-14:00
+            {'day': 'Monday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'Break'},
+            {'day': 'Monday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'Break'},
+            {'day': 'Monday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
             {'day': 'Monday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Tuesday
             {'day': 'Tuesday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
             {'day': 'Tuesday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
-            {'day': 'Tuesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
-            {'day': 'Tuesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Tuesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'Break'},
+            {'day': 'Tuesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'Break'},
             {'day': 'Tuesday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
             {'day': 'Tuesday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Wednesday
             {'day': 'Wednesday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
             {'day': 'Wednesday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
-            {'day': 'Wednesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
-            {'day': 'Wednesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Wednesday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'Break'},
+            {'day': 'Wednesday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'Break'},
             {'day': 'Wednesday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
             {'day': 'Wednesday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Thursday
             {'day': 'Thursday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
             {'day': 'Thursday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
-            {'day': 'Thursday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
-            {'day': 'Thursday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Thursday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'Break'},
+            {'day': 'Thursday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'Break'},
             {'day': 'Thursday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
             {'day': 'Thursday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'},
             
             # Friday
             {'day': 'Friday', 'start_time': '09:00', 'end_time': '10:00', 'break_type': 'none'},
             {'day': 'Friday', 'start_time': '10:00', 'end_time': '11:00', 'break_type': 'none'},
-            {'day': 'Friday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'tea_break'},
-            {'day': 'Friday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'lunch'},
+            {'day': 'Friday', 'start_time': '11:15', 'end_time': '12:15', 'break_type': 'Break'},
+            {'day': 'Friday', 'start_time': '12:15', 'end_time': '13:15', 'break_type': 'Break'},
             {'day': 'Friday', 'start_time': '14:00', 'end_time': '15:00', 'break_type': 'none'},
             {'day': 'Friday', 'start_time': '15:00', 'end_time': '16:00', 'break_type': 'none'}
         ]
