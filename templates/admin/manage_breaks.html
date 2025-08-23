@@ -36,6 +36,9 @@
                                     <td>
                                         {% if time_slot.break_type == 'none' %}
                                             <span class="badge bg-secondary">Regular Class</span>
+                                            {% if time_slot.timetable_count > 0 %}
+                                                <br><small class="text-muted">{{ time_slot.timetable_count }} class(es) scheduled</small>
+                                            {% endif %}
                                         {% else %}
                                             <span class="badge bg-warning">{{ time_slot.break_type }}</span>
                                         {% endif %}
@@ -83,6 +86,11 @@
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add_break">
                     
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Note:</strong> Adding a break will automatically remove any existing classes scheduled during this time period.
+                    </div>
+                    
                     <div class="form-group mb-3">
                         <label for="day">Day</label>
                         <select class="form-control" name="day" required>
@@ -115,10 +123,6 @@
                         <label for="break_type">Break Type</label>
                         <select class="form-control" name="break_type">
                             <option value="Break">Break</option>
-                            <option value="Lunch">Lunch</option>
-                            <option value="Tea Break">Tea Break</option>
-                            <option value="Prayer Time">Prayer Time</option>
-                            <option value="Assembly">Assembly</option>
                         </select>
                     </div>
                 </div>
@@ -148,10 +152,6 @@
                         <label for="edit_break_type">Break Type</label>
                         <select class="form-control" name="break_type" id="edit_break_type">
                             <option value="Break">Break</option>
-                            <option value="Lunch">Lunch</option>
-                            <option value="Tea Break">Tea Break</option>
-                            <option value="Prayer Time">Prayer Time</option>
-                            <option value="Assembly">Assembly</option>
                         </select>
                     </div>
                 </div>
@@ -172,7 +172,7 @@ function editBreak(slotId, breakType) {
 }
 
 function convertToBreak(slotId) {
-    if (confirm('Convert this time slot to a break? This will remove any scheduled classes.')) {
+    if (confirm('Convert this time slot to a break? This will remove any scheduled classes and may conflict with other breaks.')) {
         // Create a form and submit it
         const form = document.createElement('form');
         form.method = 'POST';

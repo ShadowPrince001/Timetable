@@ -91,22 +91,8 @@
                                                 {% if not class_found %}
                                                     {% if break_type != 'none' %}
                                                         <div class="text-muted small">
-                                                            {% if break_type == 'tea_break' %}
-                                                                <i class="fas fa-coffee text-warning"></i><br>
-                                                                <small class="text-warning">Tea Break</small>
-                                                            {% elif break_type == 'lunch' %}
-                                                                <i class="fas fa-utensils text-success"></i><br>
-                                                                <small class="text-success">Lunch</small>
-                                                            {% elif break_type == 'prayer' %}
-                                                                <i class="fas fa-pray text-info"></i><br>
-                                                                <small class="text-info">Prayer</small>
-                                                            {% elif break_type == 'assembly' %}
-                                                                <i class="fas fa-users text-primary"></i><br>
-                                                                <small class="text-primary">Assembly</small>
-                                                            {% else %}
-                                                                <i class="fas fa-coffee"></i><br>
-                                                                <small>{{ break_type|title }}</small>
-                                                            {% endif %}
+                                                            <i class="fas fa-coffee text-warning"></i><br>
+                                                            <small class="text-warning">Break</small>
                                                         </div>
                                                     {% endif %}
                                                 {% endif %}
@@ -178,22 +164,8 @@
                                                         <td colspan="4">
                                                             {% if slot.break_type and slot.break_type != 'none' %}
                                                                 <div class="text-center">
-                                                                    {% if slot.break_type == 'tea_break' %}
-                                                                        <i class="fas fa-coffee text-warning me-2"></i>
-                                                                        <span class="text-warning fw-bold">Tea Break</span>
-                                                                    {% elif slot.break_type == 'lunch' %}
-                                                                        <i class="fas fa-utensils text-success me-2"></i>
-                                                                        <span class="text-success fw-bold">Lunch Break</span>
-                                                                    {% elif slot.break_type == 'prayer' %}
-                                                                        <i class="fas fa-pray text-info me-2"></i>
-                                                                        <span class="text-info fw-bold">Prayer Time</span>
-                                                                    {% elif slot.break_type == 'assembly' %}
-                                                                        <i class="fas fa-users text-primary me-2"></i>
-                                                                        <span class="text-primary fw-bold">Assembly</span>
-                                                                    {% else %}
-                                                                        <i class="fas fa-coffee me-2"></i>
-                                                                        <span class="fw-bold">{{ slot.break_type|title }}</span>
-                                                                    {% endif %}
+                                                                                                        <i class="fas fa-coffee text-warning me-2"></i>
+                                    <span class="text-warning fw-bold">Break</span>
                                                                 </div>
                                                             {% else %}
                                                                 <div class="text-center text-muted">

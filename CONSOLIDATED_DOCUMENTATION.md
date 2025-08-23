@@ -425,3 +425,202 @@ python sync_databases.py --tables users,courses
 ---
 
 *This documentation covers all aspects of the Timetable Creator and Automated Attendance System. For additional support or questions, please refer to the troubleshooting section or contact the development team.*
+
+## Calendar System Implementation
+
+### Overview
+
+The timetable and attendance system has been successfully transformed from a week-based system to a real calendar-based system. This implementation allows for:
+
+- **Real Calendar Integration**: Every day corresponds to a specific date and day of the week
+- **Academic Year Management**: Support for defining academic session years with start and end dates
+- **Holiday Management**: Ability to set and manage holidays
+- **Class Instance Tracking**: Individual class instances for specific dates
+- **Time-Based Attendance**: Attendance marking based on actual class times
+
+### Key Features Implemented
+
+#### 1. Database Schema Changes
+
+**New Models Added:**
+- **`AcademicYear`**: Manages academic years with start/end dates
+- **`AcademicSession`**: Defines sessions within academic years (Fall, Spring, Summer)
+- **`Holiday`**: Stores holiday information with date ranges
+- **`ClassInstance`**: Individual class instances for specific dates
+
+**Modified Models:**
+- **`Timetable`**: Added `academic_year_id` and `session_id` foreign keys
+- **`Attendance`**: Added `academic_year_id`, `session_id`, and `class_instance_id` foreign keys
+
+#### 2. Calendar Utility Functions
+
+The `calendar_utils.py` module provides comprehensive calendar functionality:
+
+**Core Functions:**
+- `get_active_academic_year()`: Get currently active academic year
+- `get_academic_session_for_date()`: Find session for a specific date
+- `is_holiday()`: Check if a date is a holiday
+- `is_valid_class_date()`: Check if classes can be held on a date
+- `get_class_instances_for_date()`: Get all classes for a specific date
+
+**Class Management:**
+- `get_today_classes()`: Get all classes scheduled for today
+- `get_student_today_classes()`: Get today's classes for a specific student
+- `get_faculty_today_classes()`: Get today's classes for a specific faculty member
+- `get_upcoming_classes()`: Get classes for the next N days
+
+**Calendar Views:**
+- `get_monthly_calendar()`: Monthly calendar view with class information
+- `get_weekly_schedule()`: Weekly schedule starting from a specific date
+- `generate_class_instances_for_timetable()`: Generate class instances for date ranges
+
+#### 3. Updated Application Logic
+
+**Dashboard Updates:**
+- **Faculty Dashboard**: Now shows real calendar-based classes with academic year info
+- **Student Dashboard**: Displays actual date-based schedules with upcoming classes
+- **Academic Year Display**: Shows current academic year and session information
+
+**Attendance System Updates:**
+- **QR Code Scanning**: Updated to work with `ClassInstance` instead of generic time slots
+- **Time-Based Attendance**: Maintains 15-minute grace period for late arrivals
+- **Automatic Absent Marking**: Updated to use class instances for accurate absent marking
+
+#### 4. Frontend Enhancements
+
+**Dashboard Improvements:**
+- **Academic Year Banner**: Shows current academic year and session
+- **Today's Classes**: Displays actual classes for the current date
+- **Upcoming Classes**: Shows next 7 days of classes with holiday indicators
+- **Holiday Display**: Special styling for holiday dates
+
+**Data Structure Changes:**
+- Classes now include actual dates instead of generic weekdays
+- Holiday information is displayed in class lists
+- Academic session information is shown throughout the interface
+
+### Database Migration
+
+**Migration Process:**
+1. **Schema Update**: Added new columns to existing tables
+2. **New Tables**: Created calendar-related tables
+3. **Data Migration**: Migrated existing data to new structure
+4. **Class Instance Generation**: Generated class instances based on timetables and sessions
+
+**Sample Data:**
+- **Academic Year**: 2025-2026 (September 1, 2025 - August 31, 2026)
+- **Sessions**: Fall Semester, Spring Semester, Summer Session
+- **Holidays**: Christmas, New Year, Independence Day
+- **Classes**: Introduction to Computer Science, Calculus I, English Composition
+
+### Testing Results
+
+**Calendar System Tests:**
+✅ **Active Academic Year**: Successfully retrieves 2025-2026 academic year  
+✅ **Class Instance Generation**: Correctly generates classes for specific dates  
+✅ **Date-Based Queries**: Properly filters classes by actual dates  
+✅ **Holiday Detection**: Correctly identifies holidays and non-class days  
+✅ **Faculty/Student Views**: Shows appropriate classes for each user type  
+
+**Example Test Results:**
+```
+📅 Test date: 2025-08-25 (Monday)
+📚 Class Instances: 1
+```
+
+## Recent Fixes and Improvements
+
+### Break System Enhancements
+
+**Issues Fixed:**
+- Breaks were not persisting after reloading timetables
+- Breaks were cleared when entire timetables were cleared
+- Adding new breaks didn't remove existing classes in conflicting time slots
+
+**Solutions Implemented:**
+- Modified `admin_clear_timetables` to preserve `TimeSlot` entries marked as breaks
+- Enhanced `admin_manage_breaks` with conflict detection and automatic class removal
+- Updated timetable generation to skip scheduling classes in break time slots
+- Simplified break system to use generic "Break" type instead of named breaks
+
+**Key Functions Added:**
+- `check_break_conflicts()`: Detects overlapping time slots with existing breaks or classes
+- `preserve_break_time_slots()`: Ensures break time slots are maintained during operations
+
+### Course and Classroom Management Improvements
+
+**CRUD Operations Enhanced:**
+- **Input Validation**: Comprehensive validation for all required fields, numeric types, and ranges
+- **Duplicate Prevention**: Checks for duplicate course codes and room numbers
+- **Teacher Validation**: Ensures assigned teachers exist and have appropriate roles
+- **Transaction Safety**: Proper database rollback on errors with user-friendly messages
+
+**Dependency Management:**
+- **Course Deletion**: Added dependency checks for Timetable, StudentGroupCourse, Attendance, and CourseTeacher
+- **Classroom Deletion**: Added dependency checks for Timetable entries
+- **Cascade Delete Option**: Force deletion with cleanup of all related records
+- **Frontend Modal**: Dynamic dependency display with confirmation dialogs
+
+### Database Schema Fixes
+
+**Issues Resolved:**
+- Missing `timetable_id` column in `attendance` table
+- Missing `class_instance` table
+- Foreign key constraint violations
+- SQLAlchemy relationship conflicts
+
+**Solutions Implemented:**
+- Added missing columns and tables via migration script
+- Updated `Attendance` model with proper relationships
+- Fixed backref conflicts in SQLAlchemy models
+- Enhanced `admin_delete_timetable` to handle related records properly
+
+**Key Changes:**
+```python
+# Attendance model enhanced
+timetable_id = db.Column(db.Integer, db.ForeignKey('timetable.id'), nullable=True)
+timetable = db.relationship('Timetable', backref='attendance_records')
+
+# ClassInstance model relationships fixed
+attendance_records = db.relationship('Attendance', cascade='all, delete-orphan')
+```
+
+### Export/Import System Improvements
+
+**PostgreSQL Compatibility:**
+- **Export**: Provides instructions for `pg_dump` usage (requires system access)
+- **Import**: Provides instructions for `pg_restore` usage
+- **SQLite Support**: Maintains full compatibility for development environments
+- **Error Handling**: Improved error messages and user guidance
+
+### Code Cleanup and Optimization
+
+**Debug Code Removal:**
+- Removed all debug print statements from production code
+- Cleaned up test-related comments and temporary code
+- Maintained essential error logging for production debugging
+- Improved code readability and maintainability
+
+**Performance Improvements:**
+- Enhanced database connection pooling for PostgreSQL
+- Optimized SQLAlchemy queries and relationships
+- Improved memory management in timetable generation
+- Better error handling and user feedback
+
+### Testing and Validation
+
+**Comprehensive Testing:**
+- **Break System**: Verified break persistence and conflict resolution
+- **CRUD Operations**: Tested all add/edit/delete operations with validation
+- **Database Operations**: Verified foreign key constraints and cascade operations
+- **Error Handling**: Tested various error scenarios and user feedback
+
+**Quality Assurance:**
+- All major functionality tested and verified
+- Error handling improved across all operations
+- User experience enhanced with better feedback
+- Code quality improved through cleanup and optimization
+
+---
+
+*This documentation covers all aspects of the Timetable Creator and Automated Attendance System. For additional support or questions, please refer to the troubleshooting section or contact the development team.*

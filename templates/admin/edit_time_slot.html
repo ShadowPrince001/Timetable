@@ -54,13 +54,11 @@
                         </div>
                         <div class="col-md-6">
                             <div class="form-group mb-3">
-                                <label for="break_type" class="form-label">Break Type</label>
-                                <select class="form-control" id="break_type" name="break_type">
-                                    <option value="none" {% if time_slot.break_type == 'none' %}selected{% endif %}>No Break</option>
-                                    <option value="short" {% if time_slot.break_type == 'short' %}selected{% endif %}>Short Break (5-10 min)</option>
-                                    <option value="medium" {% if time_slot.break_type == 'medium' %}selected{% endif %}>Medium Break (15-20 min)</option>
-                                    <option value="long" {% if time_slot.break_type == 'long' %}selected{% endif %}>Long Break (30+ min)</option>
-                                </select>
+                                                        <label for="break_type" class="form-label">Break Type</label>
+                        <select class="form-control" id="break_type" name="break_type">
+                            <option value="none" {% if time_slot.break_type == 'none' %}selected{% endif %}>No Break</option>
+                            <option value="Break" {% if time_slot.break_type == 'Break' %}selected{% endif %}>Break</option>
+                        </select>
                             </div>
                         </div>
                     </div>

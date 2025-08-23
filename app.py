@@ -286,6 +286,7 @@ class Attendance(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     time_slot_id = db.Column(db.Integer, db.ForeignKey('time_slot.id'), nullable=False)
+    timetable_id = db.Column(db.Integer, db.ForeignKey('timetable.id'), nullable=True)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
     session_id = db.Column(db.Integer, db.ForeignKey('academic_session.id'), nullable=False)
     class_instance_id = db.Column(db.Integer, db.ForeignKey('class_instance.id'), nullable=True)
@@ -299,6 +300,8 @@ class Attendance(db.Model):
     course = db.relationship('Course', backref='attendance_records')
     time_slot = db.relationship('TimeSlot', backref='attendance_records')
     faculty = db.relationship('User', foreign_keys=[marked_by], backref='marked_attendance')
+    timetable = db.relationship('Timetable', backref='attendance_records')
+    class_instance = db.relationship('ClassInstance')
     
     # Constraints
     __table_args__ = (
@@ -393,7 +396,7 @@ class ClassInstance(db.Model):
     
     # Relationships
     timetable = db.relationship('Timetable', backref='class_instances')
-    attendance_records = db.relationship('Attendance', backref='class_instance', cascade='all, delete-orphan')
+    attendance_records = db.relationship('Attendance', foreign_keys='Attendance.class_instance_id', cascade='all, delete-orphan', overlaps="class_instance")
     
     # Constraints
     __table_args__ = (
@@ -1024,12 +1027,32 @@ def admin_delete_timetable(timetable_id):
     
     try:
         timetable = Timetable.query.get_or_404(timetable_id)
+        
+        # Check for related ClassInstance records
+        class_instances = ClassInstance.query.filter_by(timetable_id=timetable_id).all()
+        if class_instances:
+            # Delete related ClassInstance records first
+            for class_instance in class_instances:
+                db.session.delete(class_instance)
+            print(f"Deleted {len(class_instances)} related class instances")
+        
+        # Check for related Attendance records
+        attendance_records = Attendance.query.filter_by(timetable_id=timetable_id).all()
+        if attendance_records:
+            # Delete related Attendance records first
+            for attendance in attendance_records:
+                db.session.delete(attendance)
+            print(f"Deleted {len(attendance_records)} related attendance records")
+        
+        # Now delete the timetable
         db.session.delete(timetable)
         db.session.commit()
-        flash('Timetable entry deleted successfully!', 'success')
+        flash('Timetable entry and all related records deleted successfully!', 'success')
+        
     except Exception as e:
         db.session.rollback()
         flash(f'Error deleting timetable: {str(e)}', 'error')
+        print(f"Timetable deletion error: {e}")
     
     return redirect(url_for('admin_timetable'))
 
@@ -1110,40 +1133,102 @@ def admin_manage_breaks():
                 end_time = request.form.get('end_time')
                 break_type = request.form.get('break_type', 'Break')
                 
-                # Create new break time slot
-                break_slot = TimeSlot(
-                    day=day,
-                    start_time=start_time,
-                    end_time=end_time,
-                    break_type=break_type
-                )
-                db.session.add(break_slot)
+                # Check for conflicts before adding the break
+                conflicts = check_break_conflicts(day, start_time, end_time)
+                if conflicts:
+                    conflict_message = "Cannot add break due to conflicts:\n" + "\n".join(conflicts)
+                    flash(conflict_message, 'error')
+                    return redirect(url_for('admin_manage_breaks'))
+                
+                # Check if there's already a time slot at this time
+                existing_slot = TimeSlot.query.filter_by(
+                    day=day, 
+                    start_time=start_time, 
+                    end_time=end_time
+                ).first()
+                
+                if existing_slot:
+                    # If it's already a break, just update the type
+                    if existing_slot.break_type == 'Break':
+                        flash('Time slot is already a break', 'info')
+                    else:
+                        # Convert existing regular slot to break
+                        existing_slot.break_type = 'Break'
+                        flash('Converted existing time slot to break', 'info')
+                else:
+                    # Create new break time slot
+                    break_slot = TimeSlot(
+                        day=day,
+                        start_time=start_time,
+                        end_time=end_time,
+                        break_type='Break'
+                    )
+                    db.session.add(break_slot)
+                    flash('Added new break time slot', 'success')
+                
+                # Remove any existing timetable entries that conflict with this break
+                conflicting_timetables = Timetable.query.join(TimeSlot).filter(
+                    TimeSlot.day == day,
+                    TimeSlot.start_time == start_time,
+                    TimeSlot.end_time == end_time
+                ).all()
+                
+                if conflicting_timetables:
+                    for tt in conflicting_timetables:
+                        db.session.delete(tt)
+                    flash(f'Removed {len(conflicting_timetables)} conflicting class(es) from this time slot', 'warning')
                 
             elif action == 'update_break':
                 slot_id = request.form.get('slot_id', type=int)
                 slot = TimeSlot.query.get_or_404(slot_id)
-                slot.break_type = request.form.get('break_type', 'Break')
+                old_break_type = slot.break_type
+                new_break_type = request.form.get('break_type', 'Break')
+                
+                # If converting from regular slot to break, check for conflicts
+                if old_break_type == 'none' and new_break_type == 'Break':
+                    conflicts = check_break_conflicts(slot.day, slot.start_time, slot.end_time, exclude_slot_id=slot_id)
+                    if conflicts:
+                        conflict_message = "Cannot convert to break due to conflicts:\n" + "\n".join(conflicts)
+                        flash(conflict_message, 'error')
+                        return redirect(url_for('admin_manage_breaks'))
+                    
+                    # Remove conflicting classes
+                    conflicting_timetables = Timetable.query.filter_by(time_slot_id=slot_id).all()
+                    if conflicting_timetables:
+                        for tt in conflicting_timetables:
+                            db.session.delete(tt)
+                        flash(f'Removed {len(conflicting_timetables)} conflicting class(es) when converting to break', 'warning')
+                
+                slot.break_type = new_break_type
+                if old_break_type == 'none':
+                    flash('Time slot converted to break successfully', 'success')
+                else:
+                    flash('Break type updated successfully', 'success')
                 
             elif action == 'delete_break':
                 slot_id = request.form.get('slot_id', type=int)
                 slot = TimeSlot.query.get_or_404(slot_id)
                 
                 # Only allow deletion of break slots
-                if slot.break_type != 'none':
+                if slot.break_type == 'Break':
                     db.session.delete(slot)
+                    flash('Deleted break time slot', 'success')
                 else:
                     flash('Cannot delete regular time slots', 'error')
                     return redirect(url_for('admin_manage_breaks'))
             
             db.session.commit()
-            flash('Break time updated successfully!', 'success')
             
         except Exception as e:
             db.session.rollback()
             flash(f'Error managing breaks: {str(e)}', 'error')
     
-    # Get all time slots sorted by day and time
+    # Get all time slots sorted by day and time with timetable counts
     time_slots = TimeSlot.query.order_by(TimeSlot.day, TimeSlot.start_time).all()
+    
+    # Add timetable count information for each time slot
+    for slot in time_slots:
+        slot.timetable_count = Timetable.query.filter_by(time_slot_id=slot.id).count()
     
     return render_template('admin/manage_breaks.html', time_slots=time_slots)
 
@@ -1463,51 +1548,101 @@ def admin_add_course():
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        code = request.form['code']
-        name = request.form['name']
-        credits = int(request.form['credits'])
-        department = request.form['department']
-        teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
-        max_students = int(request.form['max_students'])
-        semester = request.form.get('semester', '1')
-        description = request.form.get('description', '')
-        subject_area = request.form['subject_area']
-        required_equipment = request.form.get('required_equipment', '')
-        min_capacity = int(request.form.get('min_capacity', 1))
-        periods_per_week = int(request.form.get('periods_per_week', 3))
-        
-        if Course.query.filter_by(code=code).first():
-            flash('Course code already exists', 'error')
-            return redirect(url_for('admin_add_course'))
-        
-        course = Course(
-            code=code,
-            name=name,
-            credits=credits,
-            department=department,
-            max_students=max_students,
-            semester=semester,
-            description=description,
-            subject_area=subject_area,
-            required_equipment=required_equipment,
-            min_capacity=min_capacity,
-            periods_per_week=periods_per_week
-        )
-        db.session.add(course)
-        db.session.flush()  # Get the course ID
-        
-        # Add teacher assignment if specified
-        if teacher_id:
-            course_teacher = CourseTeacher(
-                course_id=course.id,
-                teacher_id=teacher_id,
-                is_primary=True
+        try:
+            # Get and validate form data
+            code = request.form.get('code', '').strip()
+            name = request.form.get('name', '').strip()
+            credits_str = request.form.get('credits', '3')
+            department = request.form.get('department', '').strip()
+            teacher_id_str = request.form.get('teacher_id', '')
+            max_students_str = request.form.get('max_students', '50')
+            semester = request.form.get('semester', '1').strip()
+            description = request.form.get('description', '').strip()
+            subject_area = request.form.get('subject_area', '').strip()
+            required_equipment = request.form.get('required_equipment', '').strip()
+            min_capacity_str = request.form.get('min_capacity', '1')
+            periods_per_week_str = request.form.get('periods_per_week', '3')
+            
+            # Validate required fields
+            if not all([code, name, department, subject_area]):
+                flash('All required fields must be filled', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            # Validate and convert numeric fields
+            try:
+                credits = int(credits_str)
+                max_students = int(max_students_str)
+                min_capacity = int(min_capacity_str)
+                periods_per_week = int(periods_per_week_str)
+                teacher_id = int(teacher_id_str) if teacher_id_str else None
+            except ValueError:
+                flash('Invalid numeric values provided', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            # Validate ranges
+            if credits < 1 or credits > 6:
+                flash('Credits must be between 1 and 6', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            if min_capacity < 1:
+                flash('Minimum capacity must be at least 1', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            if periods_per_week < 1 or periods_per_week > 10:
+                flash('Periods per week must be between 1 and 10', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            if max_students < 1:
+                flash('Maximum students must be at least 1', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            # Check if course code already exists
+            if Course.query.filter_by(code=code).first():
+                flash('Course code already exists', 'error')
+                return redirect(url_for('admin_add_course'))
+            
+            # Validate teacher if specified
+            if teacher_id:
+                teacher = User.query.filter_by(id=teacher_id, role='faculty').first()
+                if not teacher:
+                    flash('Invalid teacher selected', 'error')
+                    return redirect(url_for('admin_add_course'))
+            
+            # Create course
+            course = Course(
+                code=code,
+                name=name,
+                credits=credits,
+                department=department,
+                max_students=max_students,
+                semester=semester,
+                description=description,
+                subject_area=subject_area,
+                required_equipment=required_equipment,
+                min_capacity=min_capacity,
+                periods_per_week=periods_per_week
             )
-            db.session.add(course_teacher)
-        
-        db.session.commit()
-        flash('Course added successfully', 'success')
-        return redirect(url_for('admin_courses'))
+            db.session.add(course)
+            db.session.flush()  # Get the course ID
+            
+            # Add teacher assignment if specified
+            if teacher_id:
+                course_teacher = CourseTeacher(
+                    course_id=course.id,
+                    teacher_id=teacher_id,
+                    is_primary=True
+                )
+                db.session.add(course_teacher)
+            
+            db.session.commit()
+            flash('Course added successfully', 'success')
+            return redirect(url_for('admin_courses'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding course: {str(e)}', 'error')
+            print(f"Course addition error: {e}")
+            return redirect(url_for('admin_add_course'))
     
     teachers = User.query.filter_by(role='faculty').all()
     return render_template('admin/add_course.html', teachers=teachers)
@@ -1520,33 +1655,65 @@ def admin_add_classroom():
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        room_number = request.form['room_number']
-        capacity = int(request.form['capacity'])
-        building = request.form['building']
-        room_type = request.form.get('room_type', 'lecture')
-        floor = int(request.form.get('floor', 1))
-        status = request.form.get('status', 'active')
-        equipment = request.form.get('equipment', '')
-        facilities = request.form.get('facilities', '')
-        
-        if Classroom.query.filter_by(room_number=room_number).first():
-            flash('Room number already exists', 'error')
+        try:
+            # Get and validate form data
+            room_number = request.form.get('room_number', '').strip()
+            capacity_str = request.form.get('capacity', '30')
+            building = request.form.get('building', '').strip()
+            room_type = request.form.get('room_type', 'lecture')
+            floor_str = request.form.get('floor', '1')
+            status = request.form.get('status', 'active')
+            equipment = request.form.get('equipment', '').strip()
+            facilities = request.form.get('facilities', '').strip()
+            
+            # Validate required fields
+            if not all([room_number, building]):
+                flash('Room number and building are required', 'error')
+                return redirect(url_for('admin_add_classroom'))
+            
+            # Validate and convert numeric fields
+            try:
+                capacity = int(capacity_str)
+                floor = int(floor_str)
+            except ValueError:
+                flash('Invalid numeric values provided', 'error')
+                return redirect(url_for('admin_add_classroom'))
+            
+            # Validate ranges
+            if capacity < 1 or capacity > 500:
+                flash('Capacity must be between 1 and 500', 'error')
+                return redirect(url_for('admin_add_classroom'))
+            
+            if floor < 0 or floor > 20:
+                flash('Floor must be between 0 and 20', 'error')
+                return redirect(url_for('admin_add_classroom'))
+            
+            # Check if room number already exists
+            if Classroom.query.filter_by(room_number=room_number).first():
+                flash('Room number already exists', 'error')
+                return redirect(url_for('admin_add_classroom'))
+            
+            # Create classroom
+            classroom = Classroom(
+                room_number=room_number,
+                capacity=capacity,
+                building=building,
+                room_type=room_type,
+                floor=floor,
+                status=status,
+                equipment=equipment,
+                facilities=facilities
+            )
+            db.session.add(classroom)
+            db.session.commit()
+            flash('Classroom added successfully', 'success')
+            return redirect(url_for('admin_classrooms'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding classroom: {str(e)}', 'error')
+            print(f"Classroom addition error: {e}")
             return redirect(url_for('admin_add_classroom'))
-        
-        classroom = Classroom(
-            room_number=room_number,
-            capacity=capacity,
-            building=building,
-            room_type=room_type,
-            floor=floor,
-            status=status,
-            equipment=equipment,
-            facilities=facilities
-        )
-        db.session.add(classroom)
-        db.session.commit()
-        flash('Classroom added successfully', 'success')
-        return redirect(url_for('admin_classrooms'))
     
     return render_template('admin/add_classroom.html')
 
@@ -1800,36 +1967,102 @@ def admin_edit_course(course_id):
     course = Course.query.get_or_404(course_id)
     
     if request.method == 'POST':
-        course.code = request.form['code']
-        course.name = request.form['name']
-        course.credits = int(request.form['credits'])
-        course.department = request.form['department']
-        course.max_students = int(request.form['max_students'])
-        course.semester = request.form.get('semester', '1')
-        course.description = request.form.get('description', '')
-        course.subject_area = request.form['subject_area']
-        course.required_equipment = request.form.get('required_equipment', '')
-        course.min_capacity = int(request.form.get('min_capacity', 1))
-        course.periods_per_week = int(request.form.get('periods_per_week', 3))
-        
-        # Handle teacher assignment
-        teacher_id = int(request.form['teacher_id']) if request.form['teacher_id'] else None
-        
-        # Remove existing teacher assignments
-        CourseTeacher.query.filter_by(course_id=course.id).delete()
-        
-        # Add new teacher assignment if specified
-        if teacher_id:
-            course_teacher = CourseTeacher(
-                course_id=course.id,
-                teacher_id=teacher_id,
-                is_primary=True
-            )
-            db.session.add(course_teacher)
-        
-        db.session.commit()
-        flash('Course updated successfully', 'success')
-        return redirect(url_for('admin_courses'))
+        try:
+            # Get and validate form data
+            code = request.form.get('code', '').strip()
+            name = request.form.get('name', '').strip()
+            credits_str = request.form.get('credits', '3')
+            department = request.form.get('department', '').strip()
+            max_students_str = request.form.get('max_students', '50')
+            semester = request.form.get('semester', '1').strip()
+            description = request.form.get('description', '').strip()
+            subject_area = request.form.get('subject_area', '').strip()
+            required_equipment = request.form.get('required_equipment', '').strip()
+            min_capacity_str = request.form.get('min_capacity', '1')
+            periods_per_week_str = request.form.get('periods_per_week', '3')
+            teacher_id_str = request.form.get('teacher_id', '')
+            
+            # Validate required fields
+            if not all([code, name, department, subject_area]):
+                flash('All required fields must be filled', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            # Validate and convert numeric fields
+            try:
+                credits = int(credits_str)
+                max_students = int(max_students_str)
+                min_capacity = int(min_capacity_str)
+                periods_per_week = int(periods_per_week_str)
+                teacher_id = int(teacher_id_str) if teacher_id_str else None
+            except ValueError:
+                flash('Invalid numeric values provided', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            # Validate ranges
+            if credits < 1 or credits > 6:
+                flash('Credits must be between 1 and 6', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            if min_capacity < 1:
+                flash('Minimum capacity must be at least 1', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            if periods_per_week < 1 or periods_per_week > 10:
+                flash('Periods per week must be between 1 and 10', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            if max_students < 1:
+                flash('Maximum students must be at least 1', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            # Check if course code already exists (excluding current course)
+            existing_course = Course.query.filter_by(code=code).first()
+            if existing_course and existing_course.id != course.id:
+                flash('Course code already exists', 'error')
+                return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            # Validate teacher if specified
+            if teacher_id:
+                teacher = User.query.filter_by(id=teacher_id, role='faculty').first()
+                if not teacher:
+                    flash('Invalid teacher selected', 'error')
+                    return redirect(url_for('admin_edit_course', course_id=course_id))
+            
+            # Update course
+            course.code = code
+            course.name = name
+            course.credits = credits
+            course.department = department
+            course.max_students = max_students
+            course.semester = semester
+            course.description = description
+            course.subject_area = subject_area
+            course.required_equipment = required_equipment
+            course.min_capacity = min_capacity
+            course.periods_per_week = periods_per_week
+            
+            # Handle teacher assignment
+            # Remove existing teacher assignments
+            CourseTeacher.query.filter_by(course_id=course.id).delete()
+            
+            # Add new teacher assignment if specified
+            if teacher_id:
+                course_teacher = CourseTeacher(
+                    course_id=course.id,
+                    teacher_id=teacher_id,
+                    is_primary=True
+                )
+                db.session.add(course_teacher)
+            
+            db.session.commit()
+            flash('Course updated successfully', 'success')
+            return redirect(url_for('admin_courses'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating course: {str(e)}', 'error')
+            print(f"Course update error: {e}")
+            return redirect(url_for('admin_edit_course', course_id=course_id))
     
     teachers = User.query.filter_by(role='faculty').all()
     return render_template('admin/edit_course.html', course=course, teachers=teachers)
@@ -1841,10 +2074,120 @@ def admin_delete_course(course_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    course = Course.query.get_or_404(course_id)
-    db.session.delete(course)
-    db.session.commit()
-    flash('Course deleted successfully', 'success')
+    try:
+        course = Course.query.get_or_404(course_id)
+        
+        # Check if course is being used in timetables
+        timetable_count = Timetable.query.filter_by(course_id=course_id).count()
+        if timetable_count > 0:
+            flash(f'Cannot delete course: It is scheduled in {timetable_count} timetable entries. Please remove timetable entries first.', 'error')
+            return redirect(url_for('admin_courses'))
+        
+        # Check if course is assigned to student groups
+        group_course_count = StudentGroupCourse.query.filter_by(course_id=course_id).count()
+        if group_course_count > 0:
+            flash(f'Cannot delete course: It is assigned to {group_course_count} student groups. Please remove group assignments first.', 'error')
+            return redirect(url_for('admin_courses'))
+        
+        # Check if course has attendance records
+        attendance_count = Attendance.query.filter_by(course_id=course_id).count()
+        if attendance_count > 0:
+            flash(f'Cannot delete course: It has {attendance_count} attendance records. Please remove attendance records first.', 'error')
+            return redirect(url_for('admin_courses'))
+        
+        # Check if course has teacher assignments
+        teacher_count = CourseTeacher.query.filter_by(course_id=course_id).count()
+        if teacher_count > 0:
+            flash(f'Cannot delete course: It has {teacher_count} teacher assignments. Please remove teacher assignments first.', 'error')
+            return redirect(url_for('admin_courses'))
+        
+        # If all checks pass, delete the course
+        db.session.delete(course)
+        db.session.commit()
+        flash('Course deleted successfully', 'success')
+        
+        # Log the deletion for audit purposes
+        print(f"Course {course.code} - {course.name} deleted by admin {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting course: {str(e)}', 'error')
+        print(f"Course deletion error: {e}")
+    
+    return redirect(url_for('admin_courses'))
+
+@app.route('/admin/course_dependencies/<int:course_id>')
+@login_required
+def admin_course_dependencies(course_id):
+    """Get course dependencies for deletion check"""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        # Check all dependencies
+        timetable_count = Timetable.query.filter_by(course_id=course_id).count()
+        group_count = StudentGroupCourse.query.filter_by(course_id=course_id).count()
+        attendance_count = Attendance.query.filter_by(course_id=course_id).count()
+        teacher_count = CourseTeacher.query.filter_by(course_id=course_id).count()
+        
+        return jsonify({
+            'timetable_count': timetable_count,
+            'group_count': group_count,
+            'attendance_count': attendance_count,
+            'teacher_count': teacher_count
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/cascade_delete_course/<int:course_id>', methods=['POST'])
+@login_required
+def admin_cascade_delete_course(course_id):
+    """Force delete course and all related records"""
+    if current_user.role != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('admin_courses'))
+    
+    try:
+        course = Course.query.get_or_404(course_id)
+        
+        # Get counts for logging
+        timetable_count = Timetable.query.filter_by(course_id=course_id).count()
+        group_count = StudentGroupCourse.query.filter_by(course_id=course_id).count()
+        attendance_count = Attendance.query.filter_by(course_id=course_id).count()
+        teacher_count = CourseTeacher.query.filter_by(course_id=course_id).count()
+        
+        # Delete all related records first
+        if timetable_count > 0:
+            Timetable.query.filter_by(course_id=course_id).delete()
+            print(f"Deleted {timetable_count} timetable entries for course {course.code}")
+        
+        if group_count > 0:
+            StudentGroupCourse.query.filter_by(course_id=course_id).delete()
+            print(f"Deleted {group_count} group course assignments for course {course.code}")
+        
+        if attendance_count > 0:
+            Attendance.query.filter_by(course_id=course_id).delete()
+            print(f"Deleted {attendance_count} attendance records for course {course.code}")
+        
+        if teacher_count > 0:
+            CourseTeacher.query.filter_by(course_id=course_id).delete()
+            print(f"Deleted {teacher_count} teacher assignments for course {course.code}")
+        
+        # Now delete the course
+        db.session.delete(course)
+        db.session.commit()
+        
+        flash(f'Course "{course.code} - {course.name}" and all related records ({timetable_count + group_count + attendance_count + teacher_count} total) deleted successfully', 'success')
+        
+        # Log the cascade deletion for audit purposes
+        print(f"Course {course.code} - {course.name} cascade deleted by admin {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error cascade deleting course: {str(e)}', 'error')
+        print(f"Course cascade deletion error: {e}")
+    
     return redirect(url_for('admin_courses'))
 
 @app.route('/admin/edit_classroom/<int:classroom_id>', methods=['GET', 'POST'])
@@ -1857,18 +2200,64 @@ def admin_edit_classroom(classroom_id):
     classroom = Classroom.query.get_or_404(classroom_id)
     
     if request.method == 'POST':
-        classroom.room_number = request.form['room_number']
-        classroom.capacity = int(request.form['capacity'])
-        classroom.building = request.form['building']
-        classroom.room_type = request.form.get('room_type', 'lecture')
-        classroom.floor = int(request.form.get('floor', 1))
-        classroom.status = request.form.get('status', 'active')
-        classroom.facilities = request.form.get('facilities', '')
-        classroom.equipment = request.form.get('equipment', '')
-        
-        db.session.commit()
-        flash('Classroom updated successfully', 'success')
-        return redirect(url_for('admin_classrooms'))
+        try:
+            # Get and validate form data
+            room_number = request.form.get('room_number', '').strip()
+            capacity_str = request.form.get('capacity', '30')
+            building = request.form.get('building', '').strip()
+            room_type = request.form.get('room_type', 'lecture')
+            floor_str = request.form.get('floor', '1')
+            status = request.form.get('status', 'active')
+            facilities = request.form.get('facilities', '').strip()
+            equipment = request.form.get('equipment', '').strip()
+            
+            # Validate required fields
+            if not all([room_number, building]):
+                flash('Room number and building are required', 'error')
+                return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
+            
+            # Validate and convert numeric fields
+            try:
+                capacity = int(capacity_str)
+                floor = int(floor_str)
+            except ValueError:
+                flash('Invalid numeric values provided', 'error')
+                return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
+            
+            # Validate ranges
+            if capacity < 1 or capacity > 500:
+                flash('Capacity must be between 1 and 500', 'error')
+                return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
+            
+            if floor < 0 or floor > 20:
+                flash('Floor must be between 0 and 20', 'error')
+                return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
+            
+            # Check if room number already exists (excluding current classroom)
+            existing_classroom = Classroom.query.filter_by(room_number=room_number).first()
+            if existing_classroom and existing_classroom.id != classroom.id:
+                flash('Room number already exists', 'error')
+                return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
+            
+            # Update classroom
+            classroom.room_number = room_number
+            classroom.capacity = capacity
+            classroom.building = building
+            classroom.room_type = room_type
+            classroom.floor = floor
+            classroom.status = status
+            classroom.facilities = facilities
+            classroom.equipment = equipment
+            
+            db.session.commit()
+            flash('Classroom updated successfully', 'success')
+            return redirect(url_for('admin_classrooms'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating classroom: {str(e)}', 'error')
+            print(f"Classroom update error: {e}")
+            return redirect(url_for('admin_edit_classroom', classroom_id=classroom_id))
     
     return render_template('admin/edit_classroom.html', classroom=classroom)
 
@@ -1879,10 +2268,25 @@ def admin_delete_classroom(classroom_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    classroom = Classroom.query.get_or_404(classroom_id)
-    db.session.delete(classroom)
-    db.session.commit()
-    flash('Classroom deleted successfully', 'success')
+    try:
+        classroom = Classroom.query.get_or_404(classroom_id)
+        
+        # Check if classroom is being used in timetables
+        timetable_count = Timetable.query.filter_by(classroom_id=classroom_id).count()
+        if timetable_count > 0:
+            flash(f'Cannot delete classroom: It is scheduled in {timetable_count} timetable entries. Please remove timetable entries first.', 'error')
+            return redirect(url_for('admin_classrooms'))
+        
+        # If all checks pass, delete the classroom
+        db.session.delete(classroom)
+        db.session.commit()
+        flash('Classroom deleted successfully', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting classroom: {str(e)}', 'error')
+        print(f"Classroom deletion error: {e}")
+    
     return redirect(url_for('admin_classrooms'))
 
 # Student Group Management Routes
@@ -1993,21 +2397,16 @@ def admin_manage_group_courses(group_id):
         
         if request.method == 'POST':
             course_ids = request.form.getlist('courses')
-            print(f"Debug: Updating group {group_id} with courses: {course_ids}")
-            
             # Remove duplicates from course_ids to prevent constraint violations
             unique_course_ids = list(set([int(cid) for cid in course_ids if cid]))
             if len(unique_course_ids) != len(course_ids):
                 duplicate_count = len(course_ids) - len(unique_course_ids)
-                print(f"Debug: Removed {duplicate_count} duplicate course selections")
                 flash(f'Note: {duplicate_count} duplicate course selections were automatically removed', 'info')
             
             # Remove existing course assignments
             try:
                 StudentGroupCourse.query.filter_by(student_group_id=group_id).delete()
-                print(f"Debug: Removed existing course assignments for group {group_id}")
             except Exception as e:
-                print(f"Error removing existing assignments: {e}")
                 flash(f'Error removing existing assignments: {str(e)}', 'error')
                 return redirect(url_for('admin_student_groups'))
             
@@ -2015,14 +2414,11 @@ def admin_manage_group_courses(group_id):
             max_retries = 2
             for attempt in range(max_retries):
                 try:
-                    print(f"Debug: Attempt {attempt + 1} to add course assignments")
-                    
                     # Clear any existing objects in session
                     db.session.rollback()
                     
                     # Add new course assignments (now guaranteed to be unique)
                     for course_id in unique_course_ids:
-                        print(f"Debug: Adding course {course_id} to group {group_id}")
                         group_course = StudentGroupCourse(
                             student_group_id=group_id,
                             course_id=course_id
@@ -2030,42 +2426,32 @@ def admin_manage_group_courses(group_id):
                         db.session.add(group_course)
                     
                     db.session.commit()
-                    print(f"Debug: Successfully added {len(unique_course_ids)} unique courses to group {group_id}")
                     flash(f'Group courses updated successfully! Added {len(unique_course_ids)} unique courses.', 'success')
                     return redirect(url_for('admin_student_groups'))
                     
                 except IntegrityError as e:
-                    print(f"Debug: IntegrityError on attempt {attempt + 1}: {e}")
-                    
                     # Check if it's a sequence issue
                     if 'duplicate key value violates unique constraint "student_group_course_pkey"' in str(e) and attempt == 0:
-                        print(f"Sequence issue detected, attempting to reset sequence...")
                         if reset_student_group_course_sequence():
-                            print("Sequence reset successful, retrying...")
                             continue
                         else:
-                            print("Failed to reset sequence")
                             break
                     
                     # Check if it's a unique constraint issue (shouldn't happen now with deduplication)
                     elif 'duplicate key value violates unique constraint "unique_group_course"' in str(e):
-                        print("Unique constraint violation detected (unexpected after deduplication)")
                         # This shouldn't happen now, but handle it gracefully
                         flash('Unexpected constraint violation. Please try again or contact support.', 'error')
                         break
                     else:
                         # Re-raise if it's not a sequence issue or we've already tried
-                        print(f"Re-raising IntegrityError: {e}")
                         raise
                 except Exception as e:
-                    print(f"Debug: Exception on attempt {attempt + 1}: {e}")
                     # Re-raise any other exceptions
                     raise
             
             # If we get here, all retries failed
-            print(f"Debug: All {max_retries} attempts failed")
             flash('Failed to update group courses. Please run Database Health Check first.', 'error')
-            return redirect(url_for('admin_student_groups'))
+            return redirect(url_for('admin_student_groups')
         
         # Get all courses and current group courses
         all_courses = Course.query.all()
@@ -3397,7 +3783,7 @@ def api_time_slots():
 @app.route('/admin/clear_timetables', methods=['POST'])
 @login_required
 def admin_clear_timetables():
-    """Clear all existing timetables"""
+    """Clear all existing timetables but preserve break time slots"""
     if current_user.role != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('admin_dashboard'))
@@ -3405,9 +3791,13 @@ def admin_clear_timetables():
     try:
         existing_count = Timetable.query.count()
         if existing_count > 0:
+            # Preserve break time slots before clearing
+            break_count = preserve_break_time_slots()
+            
+            # Only delete timetable entries, preserve all time slots including breaks
             Timetable.query.delete()
             db.session.commit()
-            flash(f'🗑️ Successfully cleared {existing_count} existing timetables', 'success')
+            flash(f'🗑️ Successfully cleared {existing_count} existing timetables. {break_count} break time slots have been preserved.', 'success')
         else:
             flash('ℹ️ No existing timetables to clear', 'info')
         
@@ -3489,6 +3879,11 @@ def admin_generate_timetables():
             # Check if user wants to clear existing timetables
             clear_existing = request.form.get('clear_existing') == 'on'
             
+            # Preserve break time slots before any operations
+            break_count = preserve_break_time_slots()
+            if break_count > 0:
+                flash(f'Preserved {break_count} break time slots', 'info')
+            
             if clear_existing:
                 existing_count = Timetable.query.count()
                 if existing_count > 0:
@@ -3534,9 +3929,9 @@ def admin_generate_timetables():
                     time_slot = TimeSlot.query.get(entry.time_slot_id)
                     
                     if all([course, teacher, classroom, time_slot]):
-                        # If this time slot was previously a break, convert it back to a regular time slot
-                        if time_slot.break_type != 'none':
-                            time_slot.break_type = 'none'
+                        # Skip time slots that are breaks - don't schedule classes during breaks
+                        if time_slot.break_type == 'Break':
+                            continue
                         
                         timetable = Timetable(
                             course_id=entry.course_id,
@@ -3641,7 +4036,7 @@ def admin_check_timetable_feasibility():
         return jsonify({'feasible': False, 'reason': 'Access denied'}), 403
     
     try:
-        print(f"\n🔍 DEBUG: Starting feasibility check...")
+        # Starting feasibility check...
         
         # Get all required data
         courses = Course.query.all()
@@ -3748,7 +4143,7 @@ def admin_check_timetable_feasibility():
         generated_timetables = generator.generate_timetables()
         
         if generated_timetables:
-            print(f"✅ DEBUG: Timetable generation successful!")
+            # Timetable generation successful!
             print(f"   📊 Generated timetables for {len(generated_timetables)} groups")
             
             # Clean up generator to free memory
@@ -4116,35 +4511,46 @@ def export_database():
         return redirect(url_for('admin_dashboard'))
     
     try:
-        # Get database file path - cross-platform compatible
-        db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
-        if db_path.startswith('/'):
-            db_path = db_path[1:]
-        # Handle Windows paths
-        if os.name == 'nt':  # Windows
-            db_path = db_path.replace('/', '\\')
+        database_url = app.config['SQLALCHEMY_DATABASE_URI']
         
-        # Create SQL dump
-        conn = sqlite3.connect(db_path)
-        dump = StringIO()
-        
-        for line in conn.iterdump():
-            dump.write(f'{line}\n')
-        
-        conn.close()
-        
-        # Create response
-        response = app.response_class(
-            response=dump.getvalue(),
-            status=200,
-            mimetype='application/sql'
-        )
-        response.headers['Content-Disposition'] = 'attachment; filename=database_backup.sql'
-        
-        return response
+        if 'postgresql' in database_url or 'postgres' in database_url:
+            # For PostgreSQL, provide instructions instead of trying to export
+            # since pg_dump requires system-level access
+            flash('PostgreSQL export requires system access. Please use pg_dump command line tool or contact your database administrator.', 'warning')
+            return redirect(url_for('admin_dashboard'))
+            
+        else:
+            # SQLite export
+            db_path = database_url.replace('sqlite:///', '')
+            if db_path.startswith('/'):
+                db_path = db_path[1:]
+            # Handle Windows paths
+            if os.name == 'nt':  # Windows
+                db_path = db_path.replace('/', '\\')
+            
+            # Create SQL dump
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            dump = StringIO()
+            
+            for line in conn.iterdump():
+                dump.write(f'{line}\n')
+            
+            conn.close()
+            
+            # Create response
+            response = app.response_class(
+                response=dump.getvalue(),
+                status=200,
+                mimetype='application/sql'
+            )
+            response.headers['Content-Disposition'] = 'attachment; filename=database_backup.sql'
+            
+            return response
         
     except Exception as e:
         flash(f'Error exporting database: {str(e)}', 'error')
+        print(f"Database export error: {e}")
         return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/import_database', methods=['GET', 'POST'])
@@ -4169,34 +4575,46 @@ def import_database():
             try:
                 # Read SQL file
                 sql_content = file.read().decode('utf-8')
+                database_url = app.config['SQLALCHEMY_DATABASE_URI']
                 
-                # Get database file path - cross-platform compatible
-                db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
-                if db_path.startswith('/'):
-                    db_path = db_path[1:]
-                # Handle Windows paths
-                if os.name == 'nt':  # Windows
-                    db_path = db_path.replace('/', '\\')
-                
-                # Execute SQL commands
-                conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-                
-                # Split SQL commands and execute
-                sql_commands = sql_content.split(';')
-                for command in sql_commands:
-                    command = command.strip()
-                    if command:
-                        cursor.execute(command)
-                
-                conn.commit()
-                conn.close()
-                
-                flash('Database imported successfully!', 'success')
-                return redirect(url_for('admin_dashboard'))
+                if 'postgresql' in database_url or 'postgres' in database_url:
+                    # PostgreSQL import
+                    flash('PostgreSQL import not yet implemented. Please use pg_restore or psql command line tools.', 'warning')
+                    return redirect(request.url)
+                else:
+                    # SQLite import
+                    db_path = database_url.replace('sqlite:///', '')
+                    if db_path.startswith('/'):
+                        db_path = db_path[1:]
+                    # Handle Windows paths
+                    if os.name == 'nt':  # Windows
+                        db_path = db_path.replace('/', '\\')
+                    
+                    # Execute SQL commands
+                    import sqlite3
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    
+                    # Split SQL commands and execute
+                    sql_commands = sql_content.split(';')
+                    for command in sql_commands:
+                        command = command.strip()
+                        if command:
+                            try:
+                                cursor.execute(command)
+                            except sqlite3.Error as e:
+                                print(f"SQL command failed: {command[:100]}... Error: {e}")
+                                continue
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    flash('Database imported successfully!', 'success')
+                    return redirect(url_for('admin_dashboard'))
                 
             except Exception as e:
                 flash(f'Error importing database: {str(e)}', 'error')
+                print(f"Database import error: {e}")
                 return redirect(request.url)
         else:
             flash('Invalid file format. Please upload a .sql file', 'error')
@@ -4488,7 +4906,7 @@ def api_mark_attendance():
         status = data.get('status')
         date_str = data.get('date')
         
-        print(f"Debug: API mark attendance - student_id: {student_id}, course_id: {course_id}, time_slot_id: {time_slot_id}, timetable_id: {timetable_id}, status: {status}, date: {date_str}")
+        # API mark attendance called
         
         # Handle both new format (course_id + time_slot_id) and old format (timetable_id)
         if timetable_id and not (course_id and time_slot_id):
@@ -4546,7 +4964,7 @@ def api_mark_attendance():
         
         db.session.commit()
         
-        print(f"Debug: Successfully marked attendance for student {student_id}")
+        # Successfully marked attendance
         
         return jsonify({
             'success': True,
@@ -4575,7 +4993,7 @@ def scan_qr_code():
         course_id = data.get('course_id')
         time_slot_id = data.get('time_slot_id')
         
-        print(f"Debug: Received data - qr_hash: {qr_hash}, course_id: {course_id}, time_slot_id: {time_slot_id}")
+        # Received QR code data
         
         if not all([qr_hash, course_id, time_slot_id]):
             missing = []
@@ -4593,7 +5011,6 @@ def scan_qr_code():
         
         # Check if this is a test QR code
         if qr_hash.startswith('test-qr-'):
-            print(f"Debug: Test QR code detected: {qr_hash}")
             # For test QR codes, we'll create a mock attendance record
             # Get course information for response
             course = Course.query.get(course_id)
@@ -4604,8 +5021,6 @@ def scan_qr_code():
             time_slot = TimeSlot.query.get(time_slot_id)
             if not time_slot:
                 return jsonify({'success': False, 'error': f'Time slot with ID {time_slot_id} not found'})
-            
-            print(f"Debug: Processing test attendance for course {course.name} at {time_slot.day} {time_slot.start_time}")
             
             # Find the class instance for today
             today = date.today()
@@ -4638,8 +5053,6 @@ def scan_qr_code():
                 # If no students exist, we can't create test attendance
                 return jsonify({'success': False, 'error': 'No students found in system. Cannot create test attendance.'})
             
-            print(f"Debug: Using test student: {test_student.name} (ID: {test_student.id})")
-            
             # Create test attendance record with valid student_id
             test_attendance = Attendance(
                 student_id=test_student.id,  # Use actual student ID for test
@@ -4654,8 +5067,6 @@ def scan_qr_code():
             
             db.session.add(test_attendance)
             db.session.commit()
-            
-            print(f"Debug: Successfully marked test attendance for course {course.name}")
             
             return jsonify({
                 'success': True,
@@ -4705,7 +5116,7 @@ def scan_qr_code():
         if not class_instance:
             return jsonify({'success': False, 'error': f'No class scheduled for {course.name} on {today.strftime("%A, %B %d, %Y")}'})
         
-        print(f"Debug: Processing attendance for student {student.name} in course {course.name} at {time_slot.day} {time_slot.start_time}")
+        # Processing attendance for student
         
         # Check if attendance already marked for this class instance
         existing_attendance = Attendance.query.filter_by(
@@ -4768,7 +5179,7 @@ def scan_qr_code():
         qr_code.is_active = False
         db.session.commit()
         
-        print(f"Debug: Successfully marked {status} attendance for {student.name}")
+        # Successfully marked attendance
         
         return jsonify({
             'success': True,
@@ -4810,17 +5221,7 @@ def attendance_scanner():
         # Get time slots
         time_slots = TimeSlot.query.all()
         
-        print(f"Debug: Faculty {current_user.id} has {len(course_assignments)} course assignments")
-        print(f"Debug: Found {len(courses)} courses for dropdown")
-        print(f"Debug: Found {len(time_slots)} time slots for dropdown")
-        
-        # Debug: Print course details
-        for course in courses:
-            print(f"Debug: Course {course.id}: {course.code} - {course.name}")
-        
-        # Debug: Print time slot details
-        for slot in time_slots:
-            print(f"Debug: Time Slot {slot.id}: {slot.day} {slot.start_time}-{slot.end_time}")
+        # Faculty course assignments and dropdown data loaded
         
         return render_template('faculty/attendance_scanner.html', 
                              today=today, 
@@ -5503,6 +5904,52 @@ def start_scheduler():
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
     print("✅ Background scheduler started for automatic absent marking")
+
+def check_break_conflicts(day, start_time, end_time, exclude_slot_id=None):
+    """Check if a break time conflicts with existing classes or other breaks"""
+    conflicts = []
+    
+    # Check for overlapping time slots
+    overlapping_slots = TimeSlot.query.filter(
+        TimeSlot.day == day,
+        db.or_(
+            db.and_(TimeSlot.start_time < end_time, TimeSlot.end_time > start_time),
+            db.and_(TimeSlot.start_time == start_time, TimeSlot.end_time == end_time)
+        )
+    )
+    
+    if exclude_slot_id:
+        overlapping_slots = overlapping_slots.filter(TimeSlot.id != exclude_slot_id)
+    
+    for slot in overlapping_slots:
+        if slot.break_type == 'Break':
+            conflicts.append(f"Conflicts with existing break at {slot.start_time}-{slot.end_time}")
+        else:
+            # Check if there are classes scheduled in this time slot
+            existing_classes = Timetable.query.filter_by(time_slot_id=slot.id).count()
+            if existing_classes > 0:
+                conflicts.append(f"Conflicts with {existing_classes} scheduled class(es) at {slot.start_time}-{slot.end_time}")
+    
+    return conflicts
+
+def preserve_break_time_slots():
+    """Ensure all break time slots are preserved and not accidentally modified"""
+    try:
+        # Get all time slots that are breaks
+        break_slots = TimeSlot.query.filter(TimeSlot.break_type == 'Break').all()
+        
+        # Ensure these slots remain as breaks
+        for slot in break_slots:
+            if slot.break_type != 'Break':
+                # This shouldn't happen, but let's fix it
+                slot.break_type = 'Break'
+                print(f"Fixed break slot {slot.id} on {slot.day} {slot.start_time}-{slot.end_time}")
+        
+        db.session.commit()
+        return len(break_slots)
+    except Exception as e:
+        print(f"Error preserving break time slots: {e}")
+        return 0
 
 if __name__ == '__main__':
     # Initialize database connection before starting the app

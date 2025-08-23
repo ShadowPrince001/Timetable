@@ -374,6 +374,41 @@ function showView(viewType) {
                     <p class="text-muted">Generate timetables or add entries manually to get started.</p>
                 </div>
                 {% endif %}
+                
+                <!-- Show break time slots even when no classes are scheduled -->
+                {% if time_slots %}
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h6><i class="fas fa-clock text-warning"></i> Break Time Slots</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-warning">
+                                    <tr>
+                                        <th>Day</th>
+                                        <th>Time</th>
+                                        <th>Break Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for slot in time_slots %}
+                                        {% if slot.break_type != 'none' %}
+                                        <tr>
+                                            <td><strong>{{ slot.day }}</strong></td>
+                                            <td>{{ slot.start_time }} - {{ slot.end_time }}</td>
+                                            <td>
+                                                <span class="badge bg-warning">{{ slot.break_type|title }}</span>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

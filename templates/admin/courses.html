@@ -99,11 +99,9 @@
                                     <a href="{{ url_for('admin_edit_course', course_id=course.id) }}" class="btn btn-sm btn-outline-primary" title="Edit Course">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <form method="POST" action="{{ url_for('admin_delete_course', course_id=course.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this course?')">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Course">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" title="Delete Course" onclick="showDeleteCourseModal({{ course.id }}, '{{ course.code }}', '{{ course.name }}')">
+                    <i class="fas fa-trash"></i>
+                </button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -196,6 +194,37 @@
     </div>
 </div>
 
+<!-- Delete Course Modal -->
+<div class="modal fade" id="deleteCourseModal" tabindex="-1" aria-labelledby="deleteCourseModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteCourseModalLabel">Delete Course</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone!
+                </div>
+                <p>Are you sure you want to delete the course <strong id="courseToDelete"></strong>?</p>
+                <div id="courseDependencies" class="mt-3">
+                    <!-- Dependencies will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="cascadeDeleteBtn" onclick="cascadeDeleteCourse()" style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>Force Delete (Cascade)
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="deleteCourse()">
+                    <i class="fas fa-trash me-1"></i>Delete Course
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // Set current filter values from URL parameters when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -211,5 +240,82 @@ document.addEventListener('DOMContentLoaded', function() {
         creditsFilter.value = urlParams.get('credits');
     }
 });
+
+let courseToDeleteId = null;
+
+function showDeleteCourseModal(courseId, courseCode, courseName) {
+    courseToDeleteId = courseId;
+    document.getElementById('courseToDelete').textContent = `${courseCode} - ${courseName}`;
+    
+    // Load course dependencies
+    loadCourseDependencies(courseId);
+    
+    // Show the modal
+    new bootstrap.Modal(document.getElementById('deleteCourseModal')).show();
+}
+
+function loadCourseDependencies(courseId) {
+    // Make AJAX call to get course dependencies
+    fetch(`/admin/course_dependencies/${courseId}`)
+        .then(response => response.json())
+        .then(data => {
+            const dependenciesDiv = document.getElementById('courseDependencies');
+            let html = '<h6>Course Dependencies:</h6><ul class="list-unstyled">';
+            
+            if (data.timetable_count > 0) {
+                html += `<li><i class="fas fa-calendar text-warning me-2"></i>${data.timetable_count} timetable entries</li>`;
+            }
+            if (data.group_count > 0) {
+                html += `<li><i class="fas fa-users text-info me-2"></i>${data.group_count} student group assignments</li>`;
+            }
+            if (data.attendance_count > 0) {
+                html += `<li><i class="fas fa-clipboard-check text-success me-2"></i>${data.attendance_count} attendance records</li>`;
+            }
+            if (data.teacher_count > 0) {
+                html += `<li><i class="fas fa-chalkboard-teacher text-primary me-2"></i>${data.teacher_count} teacher assignments</li>`;
+            }
+            
+            if (data.timetable_count === 0 && data.group_count === 0 && data.attendance_count === 0 && data.teacher_count === 0) {
+                html += '<li class="text-success"><i class="fas fa-check me-2"></i>No dependencies found - safe to delete</li>';
+                document.getElementById('cascadeDeleteBtn').style.display = 'none';
+            } else {
+                html += '<li class="text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Course has dependencies and cannot be deleted normally</li>';
+                html += '<li class="text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Use Force Delete to remove course and all related records</li>';
+                document.getElementById('confirmDeleteBtn').disabled = true;
+                document.getElementById('cascadeDeleteBtn').style.display = 'inline-block';
+            }
+            
+            html += '</ul>';
+            dependenciesDiv.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading dependencies:', error);
+            document.getElementById('courseDependencies').innerHTML = '<p class="text-danger">Error loading dependencies</p>';
+        });
+}
+
+function deleteCourse() {
+    if (!courseToDeleteId) return;
+    
+    // Create form and submit
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/admin/delete_course/${courseToDeleteId}`;
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function cascadeDeleteCourse() {
+    if (!courseToDeleteId) return;
+    
+    if (confirm('⚠️ WARNING: This will delete the course AND ALL related records (timetables, attendance, group assignments, teacher assignments). This action cannot be undone! Are you absolutely sure?')) {
+        // Create form and submit to cascade delete endpoint
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/cascade_delete_course/${courseToDeleteId}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
 </script>
 {% endblock %}
