@@ -1707,39 +1707,41 @@ setInterval(function() {
 
 // Anti-screenshot protection functions
 function setupAntiScreenshotProtection() {
-    // Disable right-click context menu on QR scanner elements
-    const qrElements = document.querySelectorAll('.qr-scanner, #reader, .scanner-container');
-    qrElements.forEach(element => {
+    // Disable right-click context menu on scanner elements
+    const scannerElements = document.querySelectorAll('#scanner-container, #qr-video, .scanner-controls');
+    scannerElements.forEach(element => {
         element.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
         });
     });
     
-            // Block keyboard shortcuts for screenshots
-        document.addEventListener('keydown', function(e) {
-            // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
-            if (
-                (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
-                e.key === 'PrintScreen' ||
-                e.key === 'F12' ||
-                (e.ctrlKey && e.shiftKey && e.key === 'S') || // Ctrl+Shift+S (Screenshot)
-                (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
-                (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
-                (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
-            ) {
+    // Block keyboard shortcuts for screenshots
+    document.addEventListener('keydown', function(e) {
+        // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
+        if (
+            (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
+            e.key === 'PrintScreen' ||
+            e.key === 'F12' ||
+            (e.ctrlKey && e.shiftKey && e.key === 'S') || // Ctrl+Shift+S (Screenshot)
+            (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
+            (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
+            (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
+        ) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }
     });
     
-    // Block touch gestures that could help capture
-    const scannerContainer = document.querySelector('.scanner-container');
+    // Enhanced Touch Event Blocking for Mobile
+    const scannerContainer = document.getElementById('scanner-container');
     if (scannerContainer) {
+        // Prevent multi-finger gestures and pinch-to-zoom
         scannerContainer.addEventListener('touchstart', function(e) {
             if (e.touches.length > 1) {
                 e.preventDefault(); // Prevent pinch-to-zoom
+                showWarning('Multi-finger gestures are disabled for security');
             }
         }, { passive: false });
         
@@ -1747,23 +1749,89 @@ function setupAntiScreenshotProtection() {
             if (e.touches.length > 1) {
                 e.preventDefault(); // Prevent pinch-to-zoom
             }
+            // Prevent swipe gestures
+            if (Math.abs(e.touches[0].clientX - e.touches[0].screenX) > 50 ||
+                Math.abs(e.touches[0].clientY - e.touches[0].screenY) > 50) {
+                e.preventDefault();
+                showWarning('Swipe gestures are disabled for security');
+            }
         }, { passive: false });
         
+        // Prevent gesture events
         scannerContainer.addEventListener('gesturestart', function(e) {
-            e.preventDefault(); // Prevent gesture events
+            e.preventDefault();
+            showWarning('Gesture events are disabled for security');
         });
         
         scannerContainer.addEventListener('gesturechange', function(e) {
-            e.preventDefault(); // Prevent gesture events
+            e.preventDefault();
         });
         
         scannerContainer.addEventListener('gestureend', function(e) {
-            e.preventDefault(); // Prevent gesture events
+            e.preventDefault();
+        });
+        
+        // Prevent double-tap zoom
+        let lastTouchEnd = 0;
+        scannerContainer.addEventListener('touchend', function(e) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+                showWarning('Double-tap zoom is disabled for security');
+            }
+            lastTouchEnd = now;
+        }, false);
+    }
+    
+    // Screen Recording Detection
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        // Check for screen recording
+        setInterval(async () => {
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                if (stream) {
+                    showWarning('⚠️ Screen recording detected! Scanner may be compromised.');
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            } catch (e) {
+                // No screen recording active
+            }
+        }, 5000); // Check every 5 seconds
+    }
+    
+    // App Switching Prevention (Mobile)
+    if ('onpagehide' in window) {
+        window.addEventListener('pagehide', function(e) {
+            if (e.persisted) {
+                showWarning('⚠️ App switching detected! Please stay on this page for security.');
+            }
+        });
+        
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) {
+                showWarning('⚠️ Returning from background! Please refresh the page for security.');
+            }
         });
     }
     
-    // Additional protection: disable text selection globally on QR elements
-    qrElements.forEach(element => {
+    // Visibility Change Detection
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            showWarning('⚠️ Page hidden! Please stay on this page for security.');
+        }
+    });
+    
+    // Focus/Blur Detection
+    window.addEventListener('blur', function() {
+        showWarning('⚠️ Window lost focus! Please stay on this page for security.');
+    });
+    
+    window.addEventListener('focus', function() {
+        showWarning('⚠️ Window regained focus! Please refresh the page for security.');
+    });
+    
+    // Additional protection: disable text selection globally on scanner elements
+    scannerElements.forEach(element => {
         element.addEventListener('selectstart', function(e) {
             e.preventDefault();
             return false;
@@ -1775,7 +1843,25 @@ function setupAntiScreenshotProtection() {
         });
     });
     
-    console.log('Anti-screenshot protection enabled for faculty scanner');
+    console.log('Enhanced mobile anti-screenshot protection enabled');
 }
-</script>
-{% endblock %}
+
+// Warning display function
+function showWarning(message) {
+    const warningDiv = document.createElement('div');
+    warningDiv.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+    warningDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
+    warningDiv.innerHTML = `
+        <i class="fas fa-exclamation-triangle"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(warningDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (warningDiv.parentNode) {
+            warningDiv.remove();
+        }
+    }, 5000);
+}
