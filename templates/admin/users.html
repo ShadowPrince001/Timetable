@@ -67,9 +67,12 @@
                         <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary btn-sm me-2">
                             <i class="fas fa-times me-1"></i>Clear Filters
                         </a>
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="exportUsers()">
-                            <i class="fas fa-download me-1"></i>Export
-                        </button>
+                        <a href="{{ url_for('export_csv', table_name='users') }}" class="btn btn-outline-success btn-sm me-2">
+                            <i class="fas fa-download me-1"></i>Export CSV
+                        </a>
+                        <a href="{{ url_for('admin_import_csv', table_name='users') }}" class="btn btn-outline-info btn-sm">
+                            <i class="fas fa-upload me-1"></i>Import CSV
+                        </a>
                     </div>
                 </form>
             </div>

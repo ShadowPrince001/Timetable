@@ -219,35 +219,96 @@
                     </div>
                 </div>
                 
-                <!-- Database Management Section -->
+                <!-- CSV Export/Import Section -->
                 <div class="row mt-4">
                     <div class="col-12">
                         <h6 class="text-primary mb-3">
-                            <i class="fas fa-database me-2"></i>Database Management
+                            <i class="fas fa-file-csv me-2"></i>CSV Export/Import Management
                         </h6>
                     </div>
                 </div>
                 <div class="row">
                     <div class="col-md-3 mb-3">
-                        <a href="{{ url_for('export_database') }}" class="btn btn-outline-success w-100">
-                            <i class="fas fa-download me-2"></i>Export Database
-                        </a>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <a href="{{ url_for('import_database') }}" class="btn btn-outline-warning w-100">
-                            <i class="fas fa-upload me-2"></i>Import Database
-                        </a>
-                    </div>
-                    <div class="col-md-3 mb-3">
                         <a href="{{ url_for('export_csv', table_name='users') }}" class="btn btn-outline-info w-100">
-                            <i class="fas fa-file-csv me-2"></i>Export Users CSV
+                            <i class="fas fa-download me-2"></i>Export Users CSV
                         </a>
                     </div>
                     <div class="col-md-3 mb-3">
-                        <a href="{{ url_for('export_csv', table_name='courses') }}" class="btn btn-outline-info w-100">
-                            <i class="fas fa-file-csv me-2"></i>Export Courses CSV
+                        <a href="{{ url_for('admin_import_csv', table_name='users') }}" class="btn btn-outline-info w-100">
+                            <i class="fas fa-upload me-2"></i>Import Users CSV
                         </a>
                     </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='courses') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-download me-2"></i>Export Courses CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='courses') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-upload me-2"></i>Import Courses CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='classrooms') }}" class="btn btn-outline-warning w-100">
+                            <i class="fas fa-download me-2"></i>Export Classrooms CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='classrooms') }}" class="btn btn-outline-warning w-100">
+                            <i class="fas fa-upload me-2"></i>Import Classrooms CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='student_groups') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-download me-2"></i>Export Groups CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='student_groups') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-upload me-2"></i>Import Groups CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='time_slots') }}" class="btn btn-outline-dark w-100">
+                            <i class="fas fa-download me-2"></i>Export Time Slots CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='time_slots') }}" class="btn btn-outline-dark w-100">
+                            <i class="fas fa-upload me-2"></i>Import Time Slots CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='timetables') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-download me-2"></i>Export Timetables CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='timetables') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-upload me-2"></i>Import Timetables CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('export_csv', table_name='attendance') }}" class="btn btn-outline-danger w-100">
+                            <i class="fas fa-download me-2"></i>Export Attendance CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <a href="{{ url_for('admin_import_csv', table_name='attendance') }}" class="btn btn-outline-danger w-100">
+                            <i class="fas fa-upload me-2"></i>Import Attendance CSV
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- System Management Section -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-cogs me-2"></i>System Management
+                        </h6>
+                    </div>
+                </div>
+                <div class="row">
                     <div class="col-md-3 mb-3">
                         <a href="{{ url_for('admin_reset_qr_sequence') }}" class="btn btn-outline-danger w-100" 
                            onclick="return confirm('This will reset the QR code sequence. Continue?')">

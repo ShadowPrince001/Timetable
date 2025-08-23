@@ -4696,9 +4696,21 @@ def export_csv(table_name):
         elif table_name == 'courses':
             data = Course.query.all()
             fields = ['id', 'code', 'name', 'credits', 'department', 'max_students', 'semester', 'description', 'subject_area', 'required_equipment', 'min_capacity', 'periods_per_week']
+        elif table_name == 'classrooms':
+            data = Classroom.query.all()
+            fields = ['id', 'room_number', 'building', 'capacity', 'equipment', 'description']
+        elif table_name == 'student_groups':
+            data = StudentGroup.query.all()
+            fields = ['id', 'name', 'department', 'year', 'semester', 'max_students', 'description']
+        elif table_name == 'time_slots':
+            data = TimeSlot.query.all()
+            fields = ['id', 'day', 'start_time', 'end_time', 'break_type']
         elif table_name == 'timetables':
             data = Timetable.query.all()
             fields = ['id', 'course_id', 'classroom_id', 'time_slot_id', 'teacher_id', 'student_group_id', 'semester', 'academic_year']
+        elif table_name == 'attendance':
+            data = Attendance.query.all()
+            fields = ['id', 'student_id', 'course_id', 'time_slot_id', 'timetable_id', 'class_instance_id', 'date', 'status', 'marked_by', 'marked_at', 'qr_code_used']
         else:
             flash('Invalid table name', 'error')
             return redirect(url_for('admin_dashboard'))
@@ -4730,6 +4742,126 @@ def export_csv(table_name):
     except Exception as e:
         flash(f'Error exporting {table_name}: {str(e)}', 'error')
         return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/import_csv/<table_name>', methods=['GET', 'POST'])
+@login_required
+def admin_import_csv(table_name):
+    """Import CSV data into specific table"""
+    if current_user.role != 'admin':
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    if request.method == 'POST':
+        if 'csv_file' not in request.files:
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        file = request.files['csv_file']
+        if file.filename == '':
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        if file and file.filename.endswith('.csv'):
+            try:
+                # Read CSV file
+                csv_content = file.read().decode('utf-8')
+                csv_reader = csv.DictReader(StringIO(csv_content))
+                
+                # Validate table name and get model
+                model, fields = get_table_model_and_fields(table_name)
+                if not model:
+                    flash('Invalid table name', 'error')
+                    return redirect(request.url)
+                
+                # Process CSV rows
+                success_count = 0
+                error_count = 0
+                errors = []
+                
+                for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because row 1 is header
+                    try:
+                        # Create new record
+                        record_data = {}
+                        for field in fields:
+                            if field in row and row[field].strip():
+                                value = row[field].strip()
+                                # Handle special field types
+                                if field == 'id' and value.isdigit():
+                                    record_data[field] = int(value)
+                                elif field in ['credits', 'max_students', 'capacity', 'year', 'semester'] and value.isdigit():
+                                    record_data[field] = int(value)
+                                elif field in ['created_at', 'marked_at', 'last_login'] and value:
+                                    try:
+                                        record_data[field] = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                                    except ValueError:
+                                        # Skip invalid dates
+                                        continue
+                                else:
+                                    record_data[field] = value
+                        
+                        # Create new record
+                        new_record = model(**record_data)
+                        db.session.add(new_record)
+                        success_count += 1
+                        
+                    except Exception as e:
+                        error_count += 1
+                        errors.append(f"Row {row_num}: {str(e)}")
+                        continue
+                
+                # Commit all successful records
+                if success_count > 0:
+                    db.session.commit()
+                    flash(f'Successfully imported {success_count} records from CSV. {error_count} records had errors.', 'success')
+                else:
+                    flash('No records were imported successfully.', 'warning')
+                
+                if errors:
+                    # Log errors for debugging
+                    print(f"CSV import errors for {table_name}:")
+                    for error in errors[:10]:  # Show first 10 errors
+                        print(f"  {error}")
+                    if len(errors) > 10:
+                        print(f"  ... and {len(errors) - 10} more errors")
+                
+                return redirect(url_for('admin_dashboard'))
+                
+            except Exception as e:
+                flash(f'Error importing CSV: {str(e)}', 'error')
+                print(f"CSV import error: {e}")
+                return redirect(request.url)
+        else:
+            flash('Invalid file format. Please upload a .csv file', 'error')
+            return redirect(request.url)
+    
+    return render_template('admin/import_csv.html', 
+                         table_name=table_name,
+                         User=User,
+                         Course=Course,
+                         Classroom=Classroom,
+                         StudentGroup=StudentGroup,
+                         TimeSlot=TimeSlot,
+                         Timetable=Timetable,
+                         Attendance=Attendance)
+
+def get_table_model_and_fields(table_name):
+    """Get the appropriate model and fields for a table"""
+    if table_name == 'users':
+        return User, ['username', 'email', 'role', 'name', 'department', 'phone', 'address', 'qualifications', 'experience', 'bio', 'access_level', 'group_id']
+    elif table_name == 'courses':
+        return Course, ['code', 'name', 'credits', 'department', 'max_students', 'semester', 'description', 'subject_area', 'required_equipment', 'min_capacity', 'periods_per_week']
+    elif table_name == 'classrooms':
+        return Classroom, ['room_number', 'building', 'capacity', 'equipment', 'description']
+    elif table_name == 'student_groups':
+        return StudentGroup, ['name', 'department', 'year', 'semester', 'max_students', 'description']
+    elif table_name == 'time_slots':
+        return TimeSlot, ['day', 'start_time', 'end_time', 'break_type']
+    elif table_name == 'timetables':
+        return Timetable, ['course_id', 'classroom_id', 'time_slot_id', 'teacher_id', 'student_group_id', 'semester', 'academic_year']
+    elif table_name == 'attendance':
+        return Attendance, ['student_id', 'course_id', 'time_slot_id', 'timetable_id', 'class_instance_id', 'date', 'status', 'marked_by', 'qr_code_used']
+    else:
+        return None, []
 
 @app.route('/generate_qr_code')
 @login_required

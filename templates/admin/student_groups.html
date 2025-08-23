@@ -20,9 +20,17 @@
                 <h6 class="m-0 font-weight-bold text-primary">
                     <i class="fas fa-users me-2"></i>All Student Groups
                 </h6>
-                <a href="{{ url_for('admin_add_student_group') }}" class="btn btn-primary btn-sm">
-                    <i class="fas fa-plus me-1"></i>Add Group
-                </a>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('export_csv', table_name='student_groups') }}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-download me-1"></i>Export CSV
+                    </a>
+                    <a href="{{ url_for('admin_import_csv', table_name='student_groups') }}" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-upload me-1"></i>Import CSV
+                    </a>
+                    <a href="{{ url_for('admin_add_student_group') }}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i>Add Group
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">

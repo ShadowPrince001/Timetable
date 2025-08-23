@@ -214,8 +214,11 @@
                 <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
             </a>
             <div>
-                <a href="{{ url_for('export_csv', table_name='attendance') }}" class="btn btn-outline-success">
+                <a href="{{ url_for('export_csv', table_name='attendance') }}" class="btn btn-outline-success me-2">
                     <i class="fas fa-download me-1"></i>Export Attendance CSV
+                </a>
+                <a href="{{ url_for('admin_import_csv', table_name='attendance') }}" class="btn btn-outline-info me-2">
+                    <i class="fas fa-upload me-1"></i>Import Attendance CSV
                 </a>
                 <a href="{{ url_for('admin_add_sample_attendance') }}" class="btn btn-outline-info">
                     <i class="fas fa-plus me-1"></i>Add Sample Data

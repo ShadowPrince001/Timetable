@@ -153,6 +153,12 @@ function showView(viewType) {
                     <i class="fas fa-table me-2"></i>Current Timetable
                 </h6>
                 <div>
+                    <a href="{{ url_for('export_csv', table_name='timetables') }}" class="btn btn-outline-success btn-sm me-2">
+                        <i class="fas fa-download me-1"></i>Export CSV
+                    </a>
+                    <a href="{{ url_for('admin_import_csv', table_name='timetables') }}" class="btn btn-outline-info btn-sm me-2">
+                        <i class="fas fa-upload me-1"></i>Import CSV
+                    </a>
                     <a href="{{ url_for('admin_manage_breaks') }}" class="btn btn-warning btn-sm me-2">
                         <i class="fas fa-clock me-1"></i>Manage Breaks
                     </a>
