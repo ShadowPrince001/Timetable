@@ -49,11 +49,11 @@
                                                     onclick="editBreak({{ time_slot.id }}, '{{ time_slot.break_type }}')">
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
-                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this break?')">
+                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to remove this break? The time slot will become available for classes.')">
                                                 <input type="hidden" name="action" value="delete_break">
                                                 <input type="hidden" name="slot_id" value="{{ time_slot.id }}">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                    <i class="fas fa-trash"></i> Delete
+                                                <button type="submit" class="btn btn-sm btn-outline-warning">
+                                                    <i class="fas fa-undo"></i> Remove Break
                                                 </button>
                                             </form>
                                         {% else %}

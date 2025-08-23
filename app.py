@@ -1224,12 +1224,24 @@ def admin_manage_breaks():
                 slot_id = request.form.get('slot_id', type=int)
                 slot = TimeSlot.query.get_or_404(slot_id)
                 
-                # Only allow deletion of break slots
+                # Convert break back to regular time slot
                 if slot.break_type == 'Break':
-                    db.session.delete(slot)
-                    flash('Deleted break time slot', 'success')
+                    # Check if there are existing timetables using this slot
+                    timetable_count = Timetable.query.filter_by(time_slot_id=slot.id).count()
+                    
+                    if timetable_count > 0:
+                        flash(f'Cannot remove break - {timetable_count} class(es) are scheduled during this time. Please reschedule classes first.', 'error')
+                        return redirect(url_for('admin_manage_breaks'))
+                    
+                    # Convert break back to regular time slot
+                    slot.break_type = 'none'
+                    
+                    # Store a flag indicating that timetable regeneration might be needed
+                    session['timetable_regeneration_required'] = True
+                    
+                    flash('Break removed - time slot is now available for classes. Timetable regeneration may be needed.', 'success')
                 else:
-                    flash('Cannot delete regular time slots', 'error')
+                    flash('Cannot modify regular time slots', 'error')
                     return redirect(url_for('admin_manage_breaks'))
             
             db.session.commit()
@@ -3642,15 +3654,15 @@ def init_db():
             # Create sample time slots
             time_slots = [
                 TimeSlot(day='Monday', start_time='09:00', end_time='10:00', break_type='none'),
-                TimeSlot(day='Monday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Monday', start_time='10:00', end_time='11:00', break_type='none'),
                 TimeSlot(day='Tuesday', start_time='09:00', end_time='10:00', break_type='none'),
-                TimeSlot(day='Tuesday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Tuesday', start_time='10:00', end_time='11:00', break_type='none'),
                 TimeSlot(day='Wednesday', start_time='09:00', end_time='10:00', break_type='none'),
-                TimeSlot(day='Wednesday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Wednesday', start_time='10:00', end_time='11:00', break_type='none'),
                 TimeSlot(day='Thursday', start_time='09:00', end_time='10:00', break_type='none'),
-                TimeSlot(day='Thursday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Thursday', start_time='10:00', end_time='11:00', break_type='none'),
                 TimeSlot(day='Friday', start_time='09:00', end_time='10:00', break_type='none'),
-                TimeSlot(day='Friday', start_time='10:00', end_time='11:00', break_type='short'),
+                TimeSlot(day='Friday', start_time='10:00', end_time='11:00', break_type='none'),
             ]
             db.session.add_all(time_slots)
             db.session.commit()
