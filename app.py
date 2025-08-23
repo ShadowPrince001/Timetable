@@ -2451,7 +2451,7 @@ def admin_manage_group_courses(group_id):
             
             # If we get here, all retries failed
             flash('Failed to update group courses. Please run Database Health Check first.', 'error')
-            return redirect(url_for('admin_student_groups')
+            return redirect(url_for('admin_student_groups'))
         
         # Get all courses and current group courses
         all_courses = Course.query.all()
