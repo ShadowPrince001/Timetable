@@ -446,4 +446,69 @@
         </div>
     </div>
 </div>
+
+<!-- Database Export/Import Instructions -->
+{% if export_instructions or import_instructions %}
+<div class="row mt-4">
+    <div class="col-12">
+        {% if export_instructions %}
+        <div class="card shadow border-info">
+            <div class="card-header bg-info text-white">
+                <h6 class="m-0 font-weight-bold">
+                    <i class="fas fa-download me-2"></i>PostgreSQL Export Instructions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Note:</strong> Your database is using PostgreSQL, which requires system-level access for export operations.
+                </div>
+                <div class="bg-light p-3 rounded">
+                    {% for instruction in export_instructions.instructions %}
+                        {% if instruction == '' %}
+                            <br>
+                        {% else %}
+                            <p class="mb-1">{{ instruction }}</p>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary">
+                        <i class="fas fa-check me-2"></i>I Understand
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if import_instructions %}
+        <div class="card shadow border-warning mt-3">
+            <div class="card-header bg-warning text-white">
+                <h6 class="m-0 font-weight-bold">
+                    <i class="fas fa-upload me-2"></i>PostgreSQL Import Instructions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> Your database is using PostgreSQL, which requires system-level access for import operations.
+                </div>
+                <div class="bg-light p-3 rounded">
+                    {% for instruction in import_instructions.instructions %}
+                        {% if instruction == '' %}
+                            <br>
+                        {% else %}
+                            <p class="mb-1">{{ instruction }}</p>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary">
+                        <i class="fas fa-check me-2"></i>I Understand
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 {% endblock %} 

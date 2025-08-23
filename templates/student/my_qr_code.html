@@ -21,6 +21,32 @@
         height: auto;
         border: 2px solid #ddd;
         border-radius: 8px;
+        /* Anti-screenshot CSS protection */
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-user-drag: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        pointer-events: auto;
+        /* Prevent touch gestures */
+        touch-action: none;
+        /* Disable zoom */
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+    }
+    .qr-code-container {
+        /* Anti-screenshot protection for container */
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-user-drag: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        /* Prevent touch gestures */
+        touch-action: none;
     }
     .qr-info {
         background: #f8f9fa;
@@ -50,6 +76,16 @@
     .status-expired {
         background-color: #dc3545;
     }
+    /* Additional anti-screenshot styles */
+    .qr-code-display * {
+        -webkit-user-select: none !important;
+        -webkit-touch-callout: none !important;
+        -webkit-user-drag: none !important;
+        -khtml-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+    }
 </style>
 {% endblock %}
 
@@ -64,9 +100,9 @@
 
     <div class="qr-container">
         <!-- QR Code Display -->
-        <div class="qr-code-display">
+        <div class="qr-code-display" id="qr-code-display">
             <h5>Your QR Code</h5>
-            <div id="qr-code-container">
+            <div id="qr-code-container" class="qr-code-container">
                 <p class="text-muted">Loading QR code...</p>
             </div>
             
@@ -238,6 +274,9 @@ function showSuccess(message) {
 
 // Generate/Retrieve QR code when page loads
 document.addEventListener('DOMContentLoaded', function() {
+    // Anti-screenshot protection
+    setupAntiScreenshotProtection();
+    
     fetch('/generate_qr_code')
         .then(response => response.json())
         .then(data => {
@@ -252,5 +291,77 @@ document.addEventListener('DOMContentLoaded', function() {
             showError('Error loading QR code: ' + error);
         });
 });
+
+// Anti-screenshot protection functions
+function setupAntiScreenshotProtection() {
+    // Disable right-click context menu on QR code elements
+    const qrElements = document.querySelectorAll('#qr-code-display, #qr-code-container, .qr-code-image');
+    qrElements.forEach(element => {
+        element.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+    });
+    
+    // Block keyboard shortcuts for screenshots
+    document.addEventListener('keydown', function(e) {
+        // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
+        if (
+            (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
+            e.key === 'PrintScreen' ||
+            e.key === 'F12' ||
+            (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
+            (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
+            (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    
+    // Block touch gestures that could help capture
+    const qrDisplay = document.getElementById('qr-code-display');
+    if (qrDisplay) {
+        qrDisplay.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault(); // Prevent pinch-to-zoom
+            }
+        }, { passive: false });
+        
+        qrDisplay.addEventListener('touchmove', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault(); // Prevent pinch-to-zoom
+            }
+        }, { passive: false });
+        
+        qrDisplay.addEventListener('gesturestart', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+        
+        qrDisplay.addEventListener('gesturechange', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+        
+        qrDisplay.addEventListener('gestureend', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+    }
+    
+    // Additional protection: disable text selection globally on QR elements
+    qrElements.forEach(element => {
+        element.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+        
+        element.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+    });
+    
+    console.log('Anti-screenshot protection enabled');
+}
 </script>
 {% endblock %}

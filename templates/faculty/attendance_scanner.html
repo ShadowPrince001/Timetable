@@ -64,6 +64,16 @@
         border: 2px solid #ddd;
         border-radius: 8px;
         margin: 20px 0;
+        /* Anti-screenshot CSS protection */
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-user-drag: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        /* Prevent touch gestures */
+        touch-action: none;
     }
     .attendance-form {
         background: #f8f9fa;
@@ -1543,6 +1553,9 @@ function initializeAfterLibraryLoad() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing attendance scanner...');
     
+    // Setup anti-screenshot protection
+    setupAntiScreenshotProtection();
+    
     // Reset attendance progress flag
     window.attendanceInProgress = false;
     
@@ -1691,5 +1704,77 @@ setInterval(function() {
         updateScannerStatus();
     }
 }, 500); // Update every 500ms when scanning
+
+// Anti-screenshot protection functions
+function setupAntiScreenshotProtection() {
+    // Disable right-click context menu on QR scanner elements
+    const qrElements = document.querySelectorAll('.qr-scanner, #reader, .scanner-container');
+    qrElements.forEach(element => {
+        element.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+    });
+    
+    // Block keyboard shortcuts for screenshots
+    document.addEventListener('keydown', function(e) {
+        // Block Ctrl+S (Save), Ctrl+P (Print), Print Screen, F12 (DevTools)
+        if (
+            (e.ctrlKey && (e.key === 's' || e.key === 'p')) ||
+            e.key === 'PrintScreen' ||
+            e.key === 'F12' ||
+            (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I (DevTools)
+            (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C (Inspect Element)
+            (e.ctrlKey && e.shiftKey && e.key === 'J')    // Ctrl+Shift+J (Console)
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    
+    // Block touch gestures that could help capture
+    const scannerContainer = document.querySelector('.scanner-container');
+    if (scannerContainer) {
+        scannerContainer.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault(); // Prevent pinch-to-zoom
+            }
+        }, { passive: false });
+        
+        scannerContainer.addEventListener('touchmove', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault(); // Prevent pinch-to-zoom
+            }
+        }, { passive: false });
+        
+        scannerContainer.addEventListener('gesturestart', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+        
+        scannerContainer.addEventListener('gesturechange', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+        
+        scannerContainer.addEventListener('gestureend', function(e) {
+            e.preventDefault(); // Prevent gesture events
+        });
+    }
+    
+    // Additional protection: disable text selection globally on QR elements
+    qrElements.forEach(element => {
+        element.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+        
+        element.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+    });
+    
+    console.log('Anti-screenshot protection enabled for faculty scanner');
+}
 </script>
 {% endblock %}

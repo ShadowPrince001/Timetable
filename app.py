@@ -508,6 +508,10 @@ def admin_dashboard():
         total_student_groups = 0
         recent_attendance = []
     
+    # Get instructions from session for display
+    export_instructions = session.pop('export_instructions', None)
+    import_instructions = session.pop('import_instructions', None)
+    
     return render_template('admin/dashboard.html', 
                          total_students=total_students,
                          total_faculty=total_faculty,
@@ -517,7 +521,9 @@ def admin_dashboard():
                          total_timetables=total_timetables,
                          total_attendance=total_attendance,
                          total_student_groups=total_student_groups,
-                         recent_attendance=recent_attendance)
+                         recent_attendance=recent_attendance,
+                         export_instructions=export_instructions,
+                         import_instructions=import_instructions)
 
 @app.route('/faculty/dashboard')
 @login_required
@@ -4514,9 +4520,34 @@ def export_database():
         database_url = app.config['SQLALCHEMY_DATABASE_URI']
         
         if 'postgresql' in database_url or 'postgres' in database_url:
-            # For PostgreSQL, provide instructions instead of trying to export
-            # since pg_dump requires system-level access
-            flash('PostgreSQL export requires system access. Please use pg_dump command line tool or contact your database administrator.', 'warning')
+            # For PostgreSQL, provide comprehensive instructions and options
+            flash('PostgreSQL database detected. Web export not available due to security restrictions.', 'info')
+            
+            # Store export instructions in session for display
+            session['export_instructions'] = {
+                'type': 'postgresql',
+                'database_url': database_url,
+                'instructions': [
+                    'PostgreSQL databases cannot be exported directly through the web interface for security reasons.',
+                    'Use one of these methods to export your database:',
+                    '',
+                    'METHOD 1 - Command Line (Recommended):',
+                    '1. Connect to your server via SSH',
+                    '2. Run: pg_dump -h [HOST] -U [USERNAME] -d [DATABASE_NAME] > backup.sql',
+                    '3. Download the backup.sql file to your computer',
+                    '',
+                    'METHOD 2 - Using pgAdmin:',
+                    '1. Open pgAdmin application',
+                    '2. Connect to your database',
+                    '3. Right-click database → Backup → Custom format',
+                    '4. Choose destination and save',
+                    '',
+                    'METHOD 3 - Contact Support:',
+                    'If you need assistance, contact your database administrator or hosting provider.',
+                    '',
+                    'Note: For security, database credentials are not displayed here.'
+                ]
+            }
             return redirect(url_for('admin_dashboard'))
             
         else:
@@ -4544,8 +4575,9 @@ def export_database():
                 status=200,
                 mimetype='application/sql'
             )
-            response.headers['Content-Disposition'] = 'attachment; filename=database_backup.sql'
+            response.headers['Content-Disposition'] = f'attachment; filename=database_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql'
             
+            flash('SQLite database exported successfully!', 'success')
             return response
         
     except Exception as e:
@@ -4578,9 +4610,35 @@ def import_database():
                 database_url = app.config['SQLALCHEMY_DATABASE_URI']
                 
                 if 'postgresql' in database_url or 'postgres' in database_url:
-                    # PostgreSQL import
-                    flash('PostgreSQL import not yet implemented. Please use pg_restore or psql command line tools.', 'warning')
-                    return redirect(request.url)
+                    # PostgreSQL import - provide comprehensive instructions
+                    flash('PostgreSQL database detected. Web import not available due to security restrictions.', 'info')
+                    
+                    # Store import instructions in session for display
+                    session['import_instructions'] = {
+                        'type': 'postgresql',
+                        'database_url': database_url,
+                        'instructions': [
+                            'PostgreSQL databases cannot be imported directly through the web interface for security reasons.',
+                            'Use one of these methods to import your database:',
+                            '',
+                            'METHOD 1 - Command Line (Recommended):',
+                            '1. Connect to your server via SSH',
+                            '2. Run: psql -h [HOST] -U [USERNAME] -d [DATABASE_NAME] < backup.sql',
+                            '3. Or use: pg_restore -h [HOST] -U [USERNAME] -d [DATABASE_NAME] backup.dump',
+                            '',
+                            'METHOD 2 - Using pgAdmin:',
+                            '1. Open pgAdmin application',
+                            '2. Connect to your database',
+                            '3. Right-click database → Restore → Choose backup file',
+                            '4. Select options and restore',
+                            '',
+                            'METHOD 3 - Contact Support:',
+                            'If you need assistance, contact your database administrator or hosting provider.',
+                            '',
+                            'Note: For security, database credentials are not displayed here.'
+                        ]
+                    }
+                    return redirect(url_for('admin_dashboard'))
                 else:
                     # SQLite import
                     db_path = database_url.replace('sqlite:///', '')
