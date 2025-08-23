@@ -261,7 +261,7 @@ class StudentGroup(db.Model):
     name = db.Column(db.String(50), nullable=False)
     department = db.Column(db.String(100), nullable=False)
     year = db.Column(db.Integer, nullable=False)
-    semester = db.Column(db.Integer, nullable=False)
+    semester = db.Column(db.String(50), nullable=False)  # Changed from Integer to String
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -1035,12 +1035,8 @@ def admin_delete_timetable(timetable_id):
         timetable = Timetable.query.get_or_404(timetable_id)
         
         # Check for related ClassInstance records
-        class_instances = ClassInstance.query.filter_by(timetable_id=timetable_id).all()
-        if class_instances:
-            # Delete related ClassInstance records first
-            for class_instance in class_instances:
-                db.session.delete(class_instance)
-            print(f"Deleted {len(class_instances)} related class instances")
+        # Note: ClassInstance table doesn't exist, so no need to delete related instances
+        print("No class instances to delete (ClassInstance table not implemented)")
         
         # Check for related Attendance records
         attendance_records = Attendance.query.filter_by(timetable_id=timetable_id).all()
@@ -1664,7 +1660,7 @@ def admin_add_course():
             db.session.commit()
             flash('Course added successfully', 'success')
             return redirect(url_for('admin_courses'))
-            
+                
         except Exception as e:
             db.session.rollback()
             flash(f'Error adding course: {str(e)}', 'error')
@@ -1735,7 +1731,7 @@ def admin_add_classroom():
             db.session.commit()
             flash('Classroom added successfully', 'success')
             return redirect(url_for('admin_classrooms'))
-            
+                
         except Exception as e:
             db.session.rollback()
             flash(f'Error adding classroom: {str(e)}', 'error')
@@ -2084,7 +2080,7 @@ def admin_edit_course(course_id):
             db.session.commit()
             flash('Course updated successfully', 'success')
             return redirect(url_for('admin_courses'))
-            
+                
         except Exception as e:
             db.session.rollback()
             flash(f'Error updating course: {str(e)}', 'error')
@@ -2279,7 +2275,7 @@ def admin_edit_classroom(classroom_id):
             db.session.commit()
             flash('Classroom updated successfully', 'success')
             return redirect(url_for('admin_classrooms'))
-            
+                
         except Exception as e:
             db.session.rollback()
             flash(f'Error updating classroom: {str(e)}', 'error')
@@ -2400,17 +2396,43 @@ def admin_delete_student_group(group_id):
         flash('Access denied', 'error')
         return redirect(url_for('dashboard'))
     
-    group = StudentGroup.query.get_or_404(group_id)
-    
-    # Check if group has students
-    if group.students:
-        flash('Cannot delete group with assigned students', 'error')
+    try:
+        group = StudentGroup.query.get_or_404(group_id)
+        
+        # Check if group has students
+        if group.students:
+            flash('Cannot delete group with assigned students', 'error')
+            return redirect(url_for('admin_student_groups'))
+        
+        # Delete all related records first
+        # 1. Delete all timetable entries for this group
+        timetables = Timetable.query.filter_by(student_group_id=group_id).all()
+        for timetable in timetables:
+            # Delete related attendance records first
+            attendance_records = Attendance.query.filter_by(timetable_id=timetable.id).all()
+            for attendance in attendance_records:
+                db.session.delete(attendance)
+            
+            # Delete the timetable entry
+            db.session.delete(timetable)
+        
+        # 2. Delete all course assignments for this group
+        group_courses = StudentGroupCourse.query.filter_by(student_group_id=group_id).all()
+        for group_course in group_courses:
+            db.session.delete(group_course)
+        
+        # 3. Now delete the group itself
+        db.session.delete(group)
+        db.session.commit()
+        
+        flash('Student group deleted successfully', 'success')
         return redirect(url_for('admin_student_groups'))
-    
-    db.session.delete(group)
-    db.session.commit()
-    flash('Student group deleted successfully', 'success')
-    return redirect(url_for('admin_student_groups'))
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting student group: {e}")
+        flash(f'Error deleting student group: {str(e)}', 'error')
+        return redirect(url_for('admin_student_groups'))
 
 @app.route('/admin/manage_group_courses/<int:group_id>', methods=['GET', 'POST'])
 @login_required
@@ -3868,14 +3890,23 @@ def admin_generate_timetables():
             ) for ts in time_slots]
             generator.add_time_slots(gen_time_slots)
             
-            # Get all courses
-            courses = Course.query.all()
+            # Get all student groups first
+            student_groups = StudentGroup.query.all()
+            
+            # Get only courses that are actually assigned to groups
+            assigned_course_ids = set()
+            for group in student_groups:
+                if hasattr(group, 'courses'):
+                    for gc in group.courses:
+                        assigned_course_ids.add(gc.course_id)
+            
+            assigned_courses = [c for c in Course.query.all() if c.id in assigned_course_ids]
             gen_courses = [GenCourse(
                 id=c.id, code=c.code, name=c.name, 
                 periods_per_week=c.periods_per_week, department=c.department,
                 subject_area=c.subject_area, required_equipment=c.required_equipment or '',
                 min_capacity=c.min_capacity, max_students=c.max_students
-            ) for c in courses]
+            ) for c in assigned_courses]
             generator.add_courses(gen_courses)
             
             # Get all classrooms
@@ -3893,13 +3924,34 @@ def admin_generate_timetables():
             ) for teacher in teachers]
             generator.add_teachers(gen_teachers)
             
-            # Get all student groups with their courses
-            student_groups = StudentGroup.query.all()
+            # Create GenStudentGroup objects from the already loaded student_groups
             gen_student_groups = [GenStudentGroup(
                 id=group.id, name=group.name, department=group.department,
-                year=group.year, semester=group.semester
+                year=group.year, semester=str(group.semester)  # Ensure semester is string
             ) for group in student_groups]
             generator.add_student_groups(gen_student_groups)
+            
+            # Set group-course assignments
+            group_courses_mapping = {}
+            print(f"   🔍 DEBUG: Setting up group-course assignments...")
+            for group in student_groups:
+                print(f"      👥 Processing group {group.name} (ID: {group.id})")
+                
+                # Always use manual query to get course assignments
+                result = db.session.execute(text(
+                    "SELECT c.* FROM course c JOIN student_group_course sgc ON c.id = sgc.course_id WHERE sgc.student_group_id = :group_id"
+                ), {"group_id": group.id})
+                manual_courses = result.fetchall()
+                print(f"      🔧 Manual query found {len(manual_courses)} courses for group {group.name}")
+                
+                if manual_courses:
+                    group_courses_mapping[group.id] = [c for c in gen_courses if c.id in [mc.id for mc in manual_courses]]
+                    print(f"      📚 Group {group.name}: {len(group_courses_mapping[group.id])} courses assigned")
+                else:
+                    print(f"      ⚠️  No courses assigned to group {group.name}")
+            
+            print(f"   📊 Final group_courses_mapping: {group_courses_mapping}")
+            generator.set_group_courses(group_courses_mapping)
             
             # Generate timetables for all groups
             generated_timetables = generator.generate_timetables()
@@ -3959,6 +4011,38 @@ def admin_generate_timetables():
             
             # Add new timetables
             timetables_added = 0
+            
+            # Get or create academic year and session for the current year
+            current_year = '2024-25'
+            academic_year = AcademicYear.query.filter_by(name=current_year).first()
+            if not academic_year:
+                # Create academic year if it doesn't exist
+                academic_year = AcademicYear(
+                    name=current_year,
+                    start_date=date(2024, 8, 1),
+                    end_date=date(2025, 7, 31),
+                    is_active=True
+                )
+                db.session.add(academic_year)
+                db.session.flush()  # Get the ID
+            
+            # Get or create fall semester session
+            fall_session = AcademicSession.query.filter_by(
+                name='Fall Semester',
+                academic_year_id=academic_year.id
+            ).first()
+            if not fall_session:
+                # Create fall session if it doesn't exist
+                fall_session = AcademicSession(
+                    name='Fall Semester',
+                    academic_year_id=academic_year.id,
+                    start_date=date(2024, 8, 1),
+                    end_date=date(2024, 12, 31),
+                    session_type='semester'
+                )
+                db.session.add(fall_session)
+                db.session.flush()  # Get the ID
+            
             for group_id, entries in generated_timetables.items():
                 for entry in entries:
                     # Get the actual database objects
@@ -3979,7 +4063,9 @@ def admin_generate_timetables():
                             time_slot_id=entry.time_slot_id,
                             student_group_id=entry.student_group_id,
                             semester='Fall 2024',
-                            academic_year='2024-25'
+                            academic_year='2024-25',
+                            academic_year_id=academic_year.id,
+                            session_id=fall_session.id
                         )
                         db.session.add(timetable)
                         timetables_added += 1
@@ -4088,66 +4174,136 @@ def admin_check_timetable_feasibility():
         time_slots = TimeSlot.query.all()
         
         # Check basic resource availability
+        print(f"🔍 DEBUG: Checking basic resources...")
+        print(f"   📚 Courses: {len(courses)}")
+        print(f"   🏫 Classrooms: {len(classrooms)}")
+        print(f"   👨‍🏫 Teachers: {len(teachers)}")
+        print(f"   👥 Student Groups: {len(student_groups)}")
+        print(f"   ⏰ Time Slots: {len(time_slots)}")
+        
         if not courses:
+            print(f"❌ DEBUG: No courses available")
             return jsonify({'feasible': False, 'reason': 'No courses available'})
         
         if not classrooms:
+            print(f"❌ DEBUG: No classrooms available")
             return jsonify({'feasible': False, 'reason': 'No classrooms available'})
         
         if not teachers:
+            print(f"❌ DEBUG: No teachers available")
             return jsonify({'feasible': False, 'reason': 'No teachers available'})
         
         if not student_groups:
+            print(f"❌ DEBUG: No student groups available")
             return jsonify({'feasible': False, 'reason': 'No student groups available'})
         
         if not time_slots:
+            print(f"❌ DEBUG: No time slots available")
             return jsonify({'feasible': False, 'reason': 'No time slots available'})
         
-        # Check course-group department matching
+        # ✅ CORRECT: Check if courses are available for the groups
+        # Check if groups have courses assigned to them
+        print(f"🔍 DEBUG: Checking course assignments for each group...")
         for group in student_groups:
-            group_courses = [c for c in courses if c.department == group.department]
-            if not group_courses:
-                return jsonify({'feasible': False, 'reason': f'No courses available for group {group.name}'})
+            # Get courses actually assigned to this group (from StudentGroupCourse table)
+            group_course_ids = [gc.course_id for gc in group.courses] if hasattr(group, 'courses') else []
+            
+            print(f"   👥 Group {group.name} (ID: {group.id}): {len(group_course_ids)} courses assigned")
+            if hasattr(group, 'courses'):
+                for gc in group.courses:
+                    course = Course.query.get(gc.course_id)
+                    if course:
+                        print(f"     - {course.code}: {course.name} ({course.periods_per_week} periods/week)")
+            
+            if hasattr(group, 'courses') and not group_course_ids:
+                print(f"❌ DEBUG: Group {group.name} has no courses assigned")
+                return jsonify({'feasible': False, 'reason': f'No courses assigned to group {group.name}'})
         
-        # Check classroom capacity constraints
-        for course in courses:
+        # Calculate total periods needed for ALL groups combined
+        total_required_periods = 0
+        for group in student_groups:
+            if hasattr(group, 'courses'):
+                group_courses = [Course.query.get(gc.course_id) for gc in group.courses if Course.query.get(gc.course_id)]
+                group_periods = sum(c.periods_per_week for c in group_courses)
+                total_required_periods += group_periods
+                print(f"Group {group.name}: {len(group_courses)} courses, {group_periods} periods/week")
+        
+        # Check classroom capacity constraints for courses that are actually assigned
+        print(f"🔍 DEBUG: Checking classroom capacity constraints...")
+        assigned_course_ids = set()
+        for group in student_groups:
+            if hasattr(group, 'courses'):
+                for gc in group.courses:
+                    assigned_course_ids.add(gc.course_id)
+        
+        assigned_courses = [c for c in courses if c.id in assigned_course_ids]
+        print(f"   📚 Total assigned courses: {len(assigned_courses)}")
+        
+        for course in assigned_courses:
             suitable_classrooms = [c for c in classrooms if c.capacity >= course.min_capacity]
+            print(f"   🏫 Course {course.code} ({course.name}): min_capacity={course.min_capacity}, suitable_classrooms={len(suitable_classrooms)}")
+            
             if not suitable_classrooms:
+                print(f"❌ DEBUG: Course {course.code} needs min_capacity={course.min_capacity}, but no classrooms available")
+                print(f"   Available classrooms:")
+                for c in classrooms:
+                    print(f"     - {c.room_number}: capacity={c.capacity}")
                 return jsonify({'feasible': False, 'reason': f'No classrooms with sufficient capacity for course {course.code}'})
         
-        # Check equipment constraints
-        for course in courses:
+        # Check equipment constraints for assigned courses only
+        for course in assigned_courses:
             if course.required_equipment:
                 required_equipment = [eq.strip().lower() for eq in course.required_equipment.split(',') if eq.strip()]
+                print(f"   🔧 Course {course.code} requires equipment: {required_equipment}")
                 
                 suitable_classrooms = []
                 for classroom in classrooms:
                     if classroom.capacity >= course.min_capacity:
                         classroom_equipment = [eq.strip().lower() for eq in (classroom.equipment or '').split(',') if eq.strip()]
+                        print(f"     🏫 Classroom {classroom.room_number}: equipment={classroom_equipment}")
                         
                         # Check if all required equipment is available
                         equipment_available = True
+                        missing_equipment = []
                         for req_eq in required_equipment:
                             if req_eq:
                                 equipment_found = any(req_eq in eq or eq in req_eq for eq in classroom_equipment)
                                 if not equipment_found:
                                     equipment_available = False
-                                    break
+                                    missing_equipment.append(req_eq)
                         
                         if equipment_available:
                             suitable_classrooms.append(classroom)
+                            print(f"       ✅ Equipment match found")
+                        else:
+                            print(f"       ❌ Missing equipment: {missing_equipment}")
                 
+                print(f"   🏫 Course {course.code}: {len(suitable_classrooms)} suitable classrooms with equipment")
                 if not suitable_classrooms:
+                    print(f"❌ DEBUG: Course {course.code} needs equipment {required_equipment}, but no suitable classrooms")
                     return jsonify({'feasible': False, 'reason': f'No classrooms with required equipment for course {course.code}'})
+            else:
+                print(f"   🔧 Course {course.code}: No equipment requirements")
         
-        # Check teacher availability
-        total_required_periods = sum(c.periods_per_week for c in courses)
+        # Check time slot availability
+        print(f"🔍 DEBUG: Checking time slot availability...")
         total_available_slots = len(time_slots) * len(student_groups)
         
+        print(f"   📊 Total required periods: {total_required_periods}")
+        print(f"   📊 Total available slots: {total_available_slots}")
+        print(f"   📊 Time slots per day: {len([ts for ts in time_slots if ts.day == 'Monday'])}")
+        print(f"   📊 Break time slots: {len([ts for ts in time_slots if ts.break_type == 'Break'])}")
+        print(f"   📊 Available time slots: {len([ts for ts in time_slots if ts.break_type != 'Break'])}")
+        
         if total_required_periods > total_available_slots:
+            print(f"❌ DEBUG: Not enough time slots available")
+            print(f"   Required: {total_required_periods} periods")
+            print(f"   Available: {total_available_slots} slots")
+            print(f"   Deficit: {total_required_periods - total_available_slots} slots")
             return jsonify({'feasible': False, 'reason': f'Not enough time slots available. Required: {total_required_periods}, Available: {total_available_slots}'})
         
         # Try actual timetable generation
+        print(f"🔍 DEBUG: Attempting actual timetable generation...")
         generator = MultiGroupTimetableGenerator()
         
         # Convert database models to dataclass objects and add all resources
@@ -4155,13 +4311,24 @@ def admin_check_timetable_feasibility():
             id=ts.id, day=ts.day, start_time=ts.start_time, end_time=ts.end_time
         ) for ts in time_slots]
         generator.add_time_slots(gen_time_slots)
+        print(f"   ⏰ Added {len(gen_time_slots)} time slots to generator")
+        
+        # Only add courses that are actually assigned to groups
+        assigned_course_ids = set()
+        for group in student_groups:
+            if hasattr(group, 'courses'):
+                for gc in group.courses:
+                    assigned_course_ids.add(gc.course_id)
+        
+        assigned_courses = [c for c in courses if c.id in assigned_course_ids]
+        print(f"   📚 Adding {len(assigned_courses)} assigned courses to generator")
         
         gen_courses = [GenCourse(
             id=c.id, code=c.code, name=c.name, periods_per_week=c.periods_per_week,
             department=c.department, subject_area=c.subject_area,
             required_equipment=c.required_equipment or '',
             min_capacity=c.min_capacity, max_students=c.max_students
-        ) for c in courses]
+        ) for c in assigned_courses]
         generator.add_courses(gen_courses)
         
         gen_classrooms = [GenClassroom(
@@ -4169,24 +4336,52 @@ def admin_check_timetable_feasibility():
             room_type=c.room_type, equipment=c.equipment or '', building=c.building
         ) for c in classrooms]
         generator.add_classrooms(gen_classrooms)
+        print(f"   🏫 Added {len(gen_classrooms)} classrooms to generator")
         
         gen_teachers = [GenTeacher(
             id=t.id, name=t.name, department=t.department
         ) for t in teachers]
         generator.add_teachers(gen_teachers)
+        print(f"   👨‍🏫 Added {len(gen_teachers)} teachers to generator")
         
         gen_student_groups = [GenStudentGroup(
             id=g.id, name=g.name, department=g.department,
-            year=g.year, semester=g.semester
+            year=g.year, semester=str(g.semester)  # Ensure semester is string
         ) for g in student_groups]
         generator.add_student_groups(gen_student_groups)
+        print(f"   👥 Added {len(gen_student_groups)} student groups to generator")
+        
+        # Set group-course assignments
+        group_courses_mapping = {}
+        print(f"   🔍 DEBUG: Setting up group-course assignments...")
+        for group in student_groups:
+            print(f"      👥 Processing group {group.name} (ID: {group.id})")
+            
+            # Always use manual query to get course assignments
+            result = db.session.execute(text(
+                "SELECT c.* FROM course c JOIN student_group_course sgc ON c.id = sgc.course_id WHERE sgc.student_group_id = :group_id"
+            ), {"group_id": group.id})
+            manual_courses = result.fetchall()
+            print(f"      🔧 Manual query found {len(manual_courses)} courses for group {group.name}")
+            
+            if manual_courses:
+                group_courses_mapping[group.id] = [c for c in gen_courses if c.id in [mc.id for mc in manual_courses]]
+                print(f"      📚 Group {group.name}: {len(group_courses_mapping[group.id])} courses assigned")
+            else:
+                print(f"      ⚠️  No courses assigned to group {group.name}")
+        
+        print(f"   📊 Final group_courses_mapping: {group_courses_mapping}")
+        generator.set_group_courses(group_courses_mapping)
         
         # Generate timetables
+        print(f"   🚀 Starting timetable generation...")
         generated_timetables = generator.generate_timetables()
         
         if generated_timetables:
             # Timetable generation successful!
             print(f"   📊 Generated timetables for {len(generated_timetables)} groups")
+            for group_id, entries in generated_timetables.items():
+                print(f"     👥 Group {group_id}: {len(entries)} classes scheduled")
             
             # Clean up generator to free memory
             generator.cleanup()
@@ -4197,6 +4392,7 @@ def admin_check_timetable_feasibility():
             })
         else:
             # Clean up generator to free memory
+            print(f"❌ DEBUG: Timetable generation failed - no timetables generated")
             generator.cleanup()
             
             return jsonify({
@@ -4205,6 +4401,9 @@ def admin_check_timetable_feasibility():
             })
             
     except Exception as e:
+        print(f"❌ DEBUG: Exception during feasibility check: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'feasible': False, 'reason': f'Error during feasibility check: {str(e)}'})
 
 @app.route('/admin/timetable_statistics')
@@ -4589,32 +4788,32 @@ def export_database():
         else:
             # SQLite export
             db_path = database_url.replace('sqlite:///', '')
-            if db_path.startswith('/'):
-                db_path = db_path[1:]
-            # Handle Windows paths
-            if os.name == 'nt':  # Windows
-                db_path = db_path.replace('/', '\\')
-            
-            # Create SQL dump
+        if db_path.startswith('/'):
+            db_path = db_path[1:]
+        # Handle Windows paths
+        if os.name == 'nt':  # Windows
+            db_path = db_path.replace('/', '\\')
+        
+        # Create SQL dump
             import sqlite3
-            conn = sqlite3.connect(db_path)
-            dump = StringIO()
-            
-            for line in conn.iterdump():
-                dump.write(f'{line}\n')
-            
-            conn.close()
-            
-            # Create response
-            response = app.response_class(
-                response=dump.getvalue(),
-                status=200,
-                mimetype='application/sql'
-            )
-            response.headers['Content-Disposition'] = f'attachment; filename=database_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql'
-            
-            flash('SQLite database exported successfully!', 'success')
-            return response
+        conn = sqlite3.connect(db_path)
+        dump = StringIO()
+        
+        for line in conn.iterdump():
+            dump.write(f'{line}\n')
+        
+        conn.close()
+        
+        # Create response
+        response = app.response_class(
+            response=dump.getvalue(),
+            status=200,
+            mimetype='application/sql'
+        )
+        response.headers['Content-Disposition'] = f'attachment; filename=database_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql'
+        
+        flash('SQLite database exported successfully!', 'success')
+        return response
         
     except Exception as e:
         flash(f'Error exporting database: {str(e)}', 'error')
@@ -4699,12 +4898,12 @@ def import_database():
                             except sqlite3.Error as e:
                                 print(f"SQL command failed: {command[:100]}... Error: {e}")
                                 continue
-                    
-                    conn.commit()
-                    conn.close()
-                    
-                    flash('Database imported successfully!', 'success')
-                    return redirect(url_for('admin_dashboard'))
+                
+                conn.commit()
+                conn.close()
+                
+                flash('Database imported successfully!', 'success')
+                return redirect(url_for('admin_dashboard'))
                 
             except Exception as e:
                 flash(f'Error importing database: {str(e)}', 'error')
@@ -5248,23 +5447,24 @@ def scan_qr_code():
             if not time_slot:
                 return jsonify({'success': False, 'error': f'Time slot with ID {time_slot_id} not found'})
             
-            # Find the class instance for today
+            # Since ClassInstance table doesn't exist, we'll work with timetables directly
             today = date.today()
-            class_instance = ClassInstance.query.filter_by(
-                timetable_id=db.session.query(Timetable.id).filter_by(
-                    course_id=course_id,
-                    time_slot_id=time_slot_id
-                ).scalar(),
-                class_date=today
+            today_weekday = today.strftime('%A').lower()
+            
+            # Find the timetable for this course and time slot on today's weekday
+            timetable = Timetable.query.join(TimeSlot).filter(
+                Timetable.course_id == course_id,
+                Timetable.time_slot_id == time_slot_id,
+                TimeSlot.day == today_weekday
             ).first()
             
-            if not class_instance:
+            if not timetable:
                 return jsonify({'success': False, 'error': f'No class scheduled for {course.name} on {today.strftime("%A, %B %d, %Y")}'})
             
             # Check if test attendance already marked for this session
             existing_test_attendance = Attendance.query.filter_by(
                 course_id=course_id,
-                class_instance_id=class_instance.id,
+                timetable_id=timetable.id,
                 date=today,
                 qr_code_used=qr_hash
             ).first()
@@ -5284,7 +5484,7 @@ def scan_qr_code():
                 student_id=test_student.id,  # Use actual student ID for test
                 course_id=course_id,
                 time_slot_id=time_slot_id,
-                class_instance_id=class_instance.id,
+                timetable_id=timetable.id,
                 date=today,
                 marked_by=current_user.id,
                 qr_code_used=qr_hash,
@@ -5329,26 +5529,27 @@ def scan_qr_code():
         if not time_slot:
             return jsonify({'success': False, 'error': f'Time slot with ID {time_slot_id} not found'})
         
-        # Find the class instance for today
+        # Since ClassInstance table doesn't exist, we'll work with timetables directly
         today = date.today()
-        class_instance = ClassInstance.query.filter_by(
-            timetable_id=db.session.query(Timetable.id).filter_by(
-                course_id=course_id,
-                time_slot_id=time_slot_id
-            ).scalar(),
-            class_date=today
+        today_weekday = today.strftime('%A').lower()
+        
+        # Find the timetable for this course and time slot on today's weekday
+        timetable = Timetable.query.join(TimeSlot).filter(
+            Timetable.course_id == course_id,
+            Timetable.time_slot_id == time_slot_id,
+            TimeSlot.day == today_weekday
         ).first()
         
-        if not class_instance:
+        if not timetable:
             return jsonify({'success': False, 'error': f'No class scheduled for {course.name} on {today.strftime("%A, %B %d, %Y")}'})
         
         # Processing attendance for student
         
-        # Check if attendance already marked for this class instance
+        # Check if attendance already marked for this timetable
         existing_attendance = Attendance.query.filter_by(
             student_id=student.id,
             course_id=course_id,
-            class_instance_id=class_instance.id,
+            timetable_id=timetable.id,
             date=today
         ).first()
         
@@ -5391,7 +5592,7 @@ def scan_qr_code():
             student_id=student.id,
             course_id=course_id,
             time_slot_id=time_slot_id,
-            class_instance_id=class_instance.id,
+            timetable_id=timetable.id,
             date=today,
             marked_by=current_user.id,
             qr_code_used=qr_hash,
@@ -6023,17 +6224,27 @@ def mark_absent_students():
         
         print(f"Running automatic absent marking at {now}")
         
-        # Get all class instances for today that have ended
-        ended_classes = []
+        # Since ClassInstance table doesn't exist, we'll work with Timetable directly
+        # Get all timetables for today's day of week
+        today_weekday = today.strftime('%A').lower()
         
-        # Get all class instances for today
-        today_class_instances = ClassInstance.query.filter_by(class_date=today).all()
+        # Get all timetables for today's weekday
+        today_timetables = Timetable.query.join(TimeSlot).filter(
+            TimeSlot.day == today_weekday
+        ).all()
         
-        for class_instance in today_class_instances:
+        if not today_timetables:
+            print("No classes scheduled for today")
+            return
+        
+        print(f"Found {len(today_timetables)} classes scheduled for today")
+        
+        # For each timetable, check if class time has ended
+        absent_count = 0
+        
+        for timetable in today_timetables:
             try:
-                # Get the timetable and time slot for this class instance
-                timetable = class_instance.timetable
-                if not timetable or not timetable.time_slot:
+                if not timetable.time_slot:
                     continue
                 
                 # Parse end time
@@ -6042,67 +6253,53 @@ def mark_absent_students():
                 
                 # Check if class has ended (more than 5 minutes after end time to allow for processing)
                 if now > class_end_datetime + timedelta(minutes=5):
-                    ended_classes.append(class_instance)
-            except ValueError:
-                print(f"Warning: Invalid time format for time slot {timetable.time_slot.id if timetable and timetable.time_slot else 'unknown'}")
-                continue
-        
-        if not ended_classes:
-            print("No classes have ended yet today")
-            return
-        
-        print(f"Found {len(ended_classes)} classes that have ended")
-        
-        # For each ended class, find students who should be marked absent
-        absent_count = 0
-        
-        for class_instance in ended_classes:
-            timetable = class_instance.timetable
-            if not timetable:
-                continue
-            
-            # Get all students in the group for this timetable
-            student_group = timetable.student_group
-            if not student_group:
-                continue
-            
-            # Get all students in this group
-            students = User.query.filter_by(
-                role='student',
-                student_group_id=student_group.id
-            ).all()
-            
-            for student in students:
-                # Check if attendance is already marked for this student, course, and class instance today
-                existing_attendance = Attendance.query.filter_by(
-                    student_id=student.id,
-                    course_id=timetable.course_id,
-                    class_instance_id=class_instance.id,
-                    date=today
-                ).first()
-                
-                # If no attendance record exists, mark as absent
-                if not existing_attendance:
-                    # Find a faculty member to mark the attendance (use the course teacher or first available faculty)
-                    faculty = timetable.teacher if timetable.teacher else User.query.filter_by(role='faculty').first()
+                    # Get all students in the group for this timetable
+                    student_group = timetable.student_group
+                    if not student_group:
+                        continue
                     
-                    if faculty:
-                        absent_attendance = Attendance(
+                    # Get all students in this group
+                    students = User.query.filter_by(
+                        role='student',
+                        student_group_id=student_group.id
+                    ).all()
+                    
+                    for student in students:
+                        # Check if attendance is already marked for this student and course today
+                        existing_attendance = Attendance.query.filter_by(
                             student_id=student.id,
                             course_id=timetable.course_id,
-                            time_slot_id=timetable.time_slot_id,
-                            class_instance_id=class_instance.id,
-                            date=today,
-                            status='absent',
-                            marked_by=faculty.id,
-                            marked_at=now,
-                            qr_code_used='auto_marked_absent'
-                        )
+                            date=today
+                        ).first()
                         
-                        db.session.add(absent_attendance)
-                        absent_count += 1
-                        
-                        print(f"Marked {student.name} as absent for {timetable.course.name} at {timetable.time_slot.start_time}-{timetable.time_slot.end_time}")
+                        # If no attendance record exists, mark as absent
+                        if not existing_attendance:
+                            # Find a faculty member to mark the attendance (use the course teacher or first available faculty)
+                            faculty = timetable.teacher if timetable.teacher else User.query.filter_by(role='faculty').first()
+                            
+                            if faculty:
+                                absent_attendance = Attendance(
+                                    student_id=student.id,
+                                    course_id=timetable.course_id,
+                                    time_slot_id=timetable.time_slot_id,
+                                    timetable_id=timetable.id,
+                                    date=today,
+                                    status='absent',
+                                    marked_by=faculty.id,
+                                    marked_at=now,
+                                    qr_code_used='auto_marked_absent'
+                                )
+                                
+                                db.session.add(absent_attendance)
+                                absent_count += 1
+                                
+                                print(f"Marked {student.name} as absent for {timetable.course.name} at {timetable.time_slot.start_time}-{timetable.time_slot.end_time}")
+            except ValueError as e:
+                print(f"Warning: Invalid time format for time slot {timetable.time_slot.id if timetable.time_slot else 'unknown'}: {e}")
+                continue
+            except Exception as e:
+                print(f"Warning: Error processing timetable {timetable.id}: {e}")
+                continue
         
         if absent_count > 0:
             db.session.commit()

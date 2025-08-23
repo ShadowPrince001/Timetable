@@ -52,7 +52,7 @@ class StudentGroup:
     name: str
     department: str
     year: int
-    semester: int
+    semester: str
 
 @dataclass
 class TimetableEntry:
@@ -76,6 +76,7 @@ class MultiGroupTimetableGenerator:
         self.classrooms = []
         self.teachers = []
         self.student_groups = []
+        self.group_courses = {}  # group_id -> List[Course]
         self.generated_timetables = {}  # group_id -> List[TimetableEntry]
         self.global_classroom_usage = defaultdict(list)  # (day, time) -> [classroom_id]
         self.global_teacher_usage = defaultdict(list)    # (day, time) -> [teacher_id]
@@ -98,8 +99,12 @@ class MultiGroupTimetableGenerator:
         self.teachers = teachers
         
     def add_student_groups(self, student_groups: List[StudentGroup]):
-        """Add student groups with their courses"""
+        """Add student groups"""
         self.student_groups = student_groups
+        
+    def set_group_courses(self, group_courses: Dict[int, List[Course]]):
+        """Set which courses are assigned to which groups"""
+        self.group_courses = group_courses
         
     def generate_timetables(self) -> Dict[int, List[TimetableEntry]]:
         """
@@ -119,14 +124,14 @@ class MultiGroupTimetableGenerator:
         for group in self.student_groups:
             print(f"\n📋 Generating timetable for group: {group.name} ({group.department})")
             
-            # Get courses for this group (filter by department)
-            group_courses = [c for c in self.courses if c.department == group.department]
+            # Get courses specifically assigned to this group
+            group_courses = self.group_courses.get(group.id, [])
             
             if not group_courses:
-                print(f"   ⚠️  No courses found for department: {group.department}")
+                print(f"   ⚠️  No courses assigned to group: {group.name}")
                 continue
             
-            print(f"   📖 Found {len(group_courses)} courses for this group")
+            print(f"   📖 Found {len(group_courses)} courses assigned to this group")
             
             # Generate timetable for this group
             group_timetable = self._generate_group_timetable(group, group_courses)
